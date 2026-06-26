@@ -1,0 +1,282 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>P2P File Transfer</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pako/2.1.0/pako.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js"></script>
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-9VL85XEBE0"></script>
+<script>
+  window.dataLayer = window.dataLayer || [];
+  function gtag(){dataLayer.push(arguments);}
+  gtag('js', new Date());
+  gtag('config', 'G-9VL85XEBE0');
+</script>
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+<nav class="navbar">
+  <div class="navbar-logo">
+    <img src="images/logo.png" alt="Logo" onerror="this.style.display='none'">
+  </div>
+  <span class="navbar-brand" data-i18n="brand">P2P File Transfer</span>
+  <span class="navbar-tag" data-i18n="tag">END-TO-END ENCRYPTED</span>
+  <div class="lang-switch">
+    <button onclick="window.setLang('ru')" id="lang-ru" class="lang-btn active">RU</button>
+    <button onclick="window.setLang('en')" id="lang-en" class="lang-btn">EN</button>
+  </div>
+</nav>
+
+<div class="mode-switch">
+  <button class="mode-btn active" id="mode-send-btn" onclick="window.setMode('send')" data-i18n="modeSend">📤 Отправитель</button>
+  <button class="mode-btn" id="mode-recv-btn" onclick="window.setMode('recv')" data-i18n="modeRecv">📥 Получатель</button>
+</div>
+
+<div class="card panel active" id="panel-send">
+  <div class="card-header">
+    <div class="icon icon-send">📤</div>
+    <div>
+      <div class="card-title" data-i18n="sendTitle">Отправка файла</div>
+      <div class="card-desc" data-i18n="sendDesc">Инициализация соединения и создание ключа</div>
+    </div>
+  </div>
+  <div class="card-body">
+    <div class="steps">
+
+      <div class="step active" id="s-step1">
+        <div class="step-num"><span class="step-num-inner">1</span></div>
+        <div class="step-content">
+          <div class="step-label" data-i18n="step1Send">Шаг 1 — Выберите файл</div>
+
+          <div class="file-drop" id="dropzone" onclick="document.getElementById('fileInput').click()"
+               ondragover="event.preventDefault();this.classList.add('dragging')"
+               ondragleave="this.classList.remove('dragging')"
+               ondrop="window.handleDrop(event)">
+            <div class="drop-icon">🗂️</div>
+            <p><strong data-i18n="dropText">Нажмите или перетащите файл сюда</strong></p>
+            <p style="margin-top:2px;font-size:11px;" data-i18n="dropHint">Любой тип и размер файла</p>
+            <input type="file" id="fileInput" onchange="window.handleFile(this.files[0])">
+          </div>
+
+          <div class="file-info" id="fileInfo">
+            <span class="file-icon">📦</span>
+            <div>
+              <div class="file-name" id="fileName">—</div>
+              <div class="file-size" id="fileSize">—</div>
+            </div>
+            <button class="file-remove" onclick="window.clearFile()">✕</button>
+          </div>
+
+          <button class="btn btn-primary" id="btnCreateOffer" style="margin-top:10px;" onclick="window.createOffer()" data-i18n="btnCreate" disabled>
+            Создать ключ соединения →
+          </button>
+        </div>
+      </div>
+
+      <div class="step" id="s-step2">
+        <div class="step-num"><span class="step-num-inner">2</span></div>
+        <div class="step-content">
+          <div class="step-label" data-i18n="step2Send">Шаг 2 — Передайте ключ получателю</div>
+
+          <div class="key-tabs">
+            <button class="key-tab active" id="tab-offer-text" onclick="window.switchTab('offer','text',this)" data-i18n="tabText">📋 Текст</button>
+            <button class="key-tab" id="tab-offer-qr" onclick="window.switchTab('offer','qr',this)" data-i18n="tabQr">📱 QR-код</button>
+          </div>
+
+          <div id="offer-text-panel">
+            <div class="key-box">
+              <textarea class="key-area" id="offerKey" readonly></textarea>
+              <button class="copy-btn" id="copyOffer" onclick="window.copyText('offerKey','copyOffer')" data-i18n="copy">Копировать</button>
+            </div>
+          </div>
+          <div class="qr-panel" id="offer-qr-panel">
+            <div class="qr-wrap" id="offerQR"></div>
+            <p class="qr-size-note" id="offerQRNote"></p>
+          </div>
+
+          <p class="hint" data-i18n="hintSend">Скопируйте текст или покажите QR-код получателю</p>
+        </div>
+      </div>
+
+      <div class="step" id="s-step3">
+        <div class="step-num"><span class="step-num-inner">3</span></div>
+        <div class="step-content">
+          <div class="step-label" data-i18n="step3Send">Шаг 3 — Вставьте ответный ключ</div>
+          <textarea class="key-area" id="answerInput"></textarea>
+          <button class="scan-btn" id="scan-ans-btn" onclick="window.openScanner('answerInput')" data-i18n="btnScanAns">📷 Сканировать QR-код получателя</button>
+          <button class="btn btn-primary" id="btnConnect" style="margin-top:8px;" onclick="window.applyAnswer()" data-i18n="btnConnect">
+            Подключиться и отправить файл
+          </button>
+        </div>
+      </div>
+
+      <div class="step" id="s-step4">
+        <div class="step-num"><span class="step-num-inner">4</span></div>
+        <div class="step-content">
+          <div class="step-label" data-i18n="step4Send">Шаг 4 — Передача файла</div>
+          <div class="status-bar" id="sendStatus"></div>
+          <div class="progress-wrap" id="sendProgress" style="margin-top:10px;">
+            <div class="progress-label">
+              <span id="progressText"></span>
+              <span id="progressPct">0%</span>
+            </div>
+            <div class="progress-bar"><div class="progress-fill" id="progressFill"></div></div>
+            <div class="eta-row">
+              <div class="eta-chip"><span data-i18n="eta">Осталось:</span>&nbsp;<strong id="sendETA">—</strong></div>
+              <div class="eta-chip"><span data-i18n="speed">Скорость:</span>&nbsp;<strong id="sendSpeed">—</strong></div>
+              <div class="eta-chip"><span data-i18n="sent">Передано:</span>&nbsp;<strong id="sendSent">—</strong></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<div class="card panel" id="panel-recv">
+  <div class="card-header">
+    <div class="icon icon-recv">📥</div>
+    <div>
+      <div class="card-title" data-i18n="recvTitle">Получение файла</div>
+      <div class="card-desc" data-i18n="recvDesc">Вставьте ключ отправителя для скачивания</div>
+    </div>
+  </div>
+  <div class="card-body">
+    <div class="steps">
+
+      <div class="step active" id="r-step1">
+        <div class="step-num"><span class="step-num-inner">1</span></div>
+        <div class="step-content">
+          <div class="step-label" data-i18n="step1Recv">Шаг 1 — Вставьте ключ отправителя</div>
+          <textarea class="key-area" id="offerInput"></textarea>
+          <button class="scan-btn" id="scan-off-btn" onclick="window.openScanner('offerInput')" data-i18n="btnScanOff">📷 Сканировать QR-код отправителя</button>
+          <button class="btn btn-green" id="btnCreateAns" style="margin-top:8px;" onclick="window.createAnswer()" data-i18n="btnCreateAns">
+            Создать ответный ключ →
+          </button>
+        </div>
+      </div>
+
+      <div class="step" id="r-step2">
+        <div class="step-num"><span class="step-num-inner">2</span></div>
+        <div class="step-content">
+          <div class="step-label" data-i18n="step2Recv">Шаг 2 — Передайте ответный ключ</div>
+
+          <div class="key-tabs">
+            <button class="key-tab active" id="tab-answer-text" onclick="window.switchTab('answer','text',this)" data-i18n="tabText">📋 Текст</button>
+            <button class="key-tab" id="tab-answer-qr" onclick="window.switchTab('answer','qr',this)" data-i18n="tabQr">📱 QR-код</button>
+          </div>
+
+          <div id="answer-text-panel">
+            <div class="key-box">
+              <textarea class="key-area" id="answerKey" readonly></textarea>
+              <button class="copy-btn" id="copyAnswer" onclick="window.copyText('answerKey','copyAnswer')" data-i18n="copy">Копировать</button>
+            </div>
+          </div>
+          <div class="qr-panel" id="answer-qr-panel">
+            <div class="qr-wrap" id="answerQR"></div>
+            <p class="qr-size-note" id="answerQRNote"></p>
+          </div>
+
+          <p class="hint" data-i18n="hintRecv">Отправьте этот текст обратно или покажите QR-код</p>
+        </div>
+      </div>
+
+      <div class="step" id="r-step3">
+        <div class="step-num"><span class="step-num-inner">3</span></div>
+        <div class="step-content">
+          <div class="step-label" data-i18n="step3Recv">Шаг 3 — Ожидание и получение файла</div>
+          <div class="status-bar" id="recvStatus"></div>
+          <button class="btn btn-green" id="btnSaveFile" style="display:none;margin-top:8px;" type="button">📥 Выбрать папку</button>
+          <div class="progress-wrap" id="recvProgress" style="margin-top:10px;">
+            <div class="progress-label">
+              <span id="recvProgressText"></span>
+              <span id="recvProgressPct">0%</span>
+            </div>
+            <div class="progress-bar"><div class="progress-fill" id="recvProgressFill"></div></div>
+            <div class="eta-row">
+              <div class="eta-chip"><span data-i18n="eta">Осталось:</span>&nbsp;<strong id="recvETA">—</strong></div>
+              <div class="eta-chip"><span data-i18n="speed">Скорость:</span>&nbsp;<strong id="recvSpeed">—</strong></div>
+              <div class="eta-chip"><span data-i18n="received">Получено:</span>&nbsp;<strong id="recvReceived">—</strong></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="scanModal">
+  <div class="modal">
+    <div class="modal-title">
+      <span data-i18n="modalTitle">📷 Сканировать QR-код</span>
+      <button class="modal-close" onclick="window.closeScanner()">✕</button>
+    </div>
+    <video id="scanVideo" autoplay playsinline muted></video>
+    <canvas id="scanCanvas" style="display:none"></canvas>
+    <div class="scan-status" id="scanStatus"></div>
+    <p class="scan-hint" data-i18n="scanHint">Наведите камеру на QR-код</p>
+  </div>
+</div>
+
+<button id="faq-toggle-btn">?</button>
+
+<div id="faq-modal" class="faq-overlay">
+    <div class="faq-content">
+        <button id="faq-close-btn">✕</button>
+        
+        <h2 id="t-faqTitle" data-i18n="faqTitle">P2P FILE TRANSFER</h2>
+        <div class="faq-divider"></div>
+        
+        <div class="faq-section">
+            <h3 id="t-faqQ1" data-i18n="faqQ1">ЧТО ЭТО?</h3>
+            <p id="t-faqA1" data-i18n="faqA1">Это инструмент для мгновенной и прямой передачи файлов любой величины между устройствами. Связь устанавливается непосредственно между двумя браузерами.</p>
+        </div>
+
+        <div class="faq-section">
+            <h3 id="t-faqQ2" data-i18n="faqQ2">КАК ЭТО РАБОТАЕТ?</h3>
+            <p id="t-faqA2" data-i18n="faqA2">Технология WebRTC находит кратчайший сетевой маршрут между отправителем и получателем. Файл режется на чанки по 64 КБ, а отправка ждёт освобождения внутреннего буфера канала и подтверждения записи, чтобы не забивать память и не перегружать браузер.</p>
+        </div>
+
+        <div class="faq-section">
+            <h3 id="t-faqQ3" data-i18n="faqQ3">ПОЧЕМУ ЭТО БЕЗОПАСНО?</h3>
+            <p id="t-faqA3" data-i18n="faqA3">Перед отправкой в сеть каждый кусок данных принудительно шифруется локальным криптографическим движком на базе WebAssembly (Rust) по алгоритму AES-256-GCM. Секретные ключи генерируются на вашем компьютере и не передаются на сторонние сервера в открытом виде.</p>
+        </div>
+
+        <div class="faq-section">
+            <h3 id="t-faqQ4" data-i18n="faqQ4">ЗАЧЕМ ЭТО НУЖНО?</h3>
+            <p id="t-faqA4" data-i18n="faqA4">Никаких облачных хранилищ, логов и промежуточных серверов. Файлы не копятся в памяти там, где браузер умеет писать на диск сразу, а реальное ограничение на размер файла зависит от браузера и его встроенных лимитов.</p>
+        </div>
+
+        <div class="faq-section">
+            <h3 id="t-faqQ5" data-i18n="faqQ5">КАКИЕ БРАУЗЕРЫ ПОДХОДЯТ?</h3>
+            <p id="t-faqA5" data-i18n="faqA5">Лучший режим для огромных файлов: Chrome, Edge и другие Chromium-браузеры на HTTPS — они умеют писать файл сразу на диск через File System Access API. Firefox и Safari поддерживают WebRTC, но без прямой записи на диск приложение использует fallback через скачивание, поэтому для очень больших файлов там возможны лимиты памяти.</p>
+        </div>
+
+        <div class="faq-footer">
+            DEVELOPED BY <a href="https://t.me/ROOTWIN_PROJECT" target="_blank" rel="noopener noreferrer">ROOTWIN PROJECT</a>
+        </div>
+    </div>
+</div>
+
+<script type="module" src="js/app.js"></script>
+
+<footer class="footer">
+  <div class="footer-dev">DEVELOPED BY <a href="https://t.me/ROOTWIN_PROJECT" target="_blank" rel="noopener noreferrer">ROOTWIN PROJECT</a></div>
+  <div class="footer-info">
+    <span>WEBRTC</span>
+    <span class="footer-dot"></span>
+    <span>AES-256</span>
+    <span class="footer-dot"></span>
+    <span>NO SERVER</span>
+  </div>
+</footer>
+
+</body>
+</html>

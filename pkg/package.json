@@ -1,0 +1,15 @@
+{
+  "name": "webrtc_crypto",
+  "type": "module",
+  "version": "0.1.0",
+  "files": [
+    "webrtc_crypto_bg.wasm",
+    "webrtc_crypto.js",
+    "webrtc_crypto.d.ts"
+  ],
+  "main": "webrtc_crypto.js",
+  "types": "webrtc_crypto.d.ts",
+  "sideEffects": [
+    "./snippets/*"
+  ]
+}
