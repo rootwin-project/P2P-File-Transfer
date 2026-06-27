@@ -75,7 +75,11 @@ const i18n = {
         faqQ5: 'КАКИЕ БРАУЗЕРЫ ПОДХОДЯТ?',
         faqA5: 'Лучший режим для огромных файлов: Chrome, Edge и другие Chromium-браузеры на HTTPS — они умеют писать файл сразу на диск через File System Access API. Firefox и Safari поддерживают WebRTC, но без прямой записи на диск приложение использует fallback через скачивание, поэтому для очень больших файлов там возможны лимиты памяти.',
         qrReady: 'Готово · {size}',
-        qrPart: 'Часть {current} из {total} · Наведите камеру',
+        qrPart: 'Часть {current} из {total} · {cameraHint}',
+        qrCameraHint: 'Наведите камеру',
+        cameraNotSupported: 'Камера не поддерживается вашим браузером',
+        cameraAccessDenied: 'Доступ к камере запрещен. Разрешите в настройках.',
+        cameraError: 'Ошибка камеры: ',
         qrPrev: 'Предыдущая часть',
         qrNext: 'Следующая часть',
         qrPause: 'Приостановить автопрокрутку',
@@ -133,7 +137,11 @@ const i18n = {
         faqQ5: 'WHICH BROWSERS WORK BEST?',
         faqA5: 'Best mode for huge files: Chrome, Edge, and other Chromium browsers over HTTPS because they can write directly to disk with the File System Access API. Firefox and Safari support WebRTC, but without direct disk writing the app falls back to browser download memory, so very large files may hit browser limits.',
         qrReady: 'Ready · {size}',
-        qrPart: 'Part {current} of {total} · Point your camera',
+        qrPart: 'Part {current} of {total} · {cameraHint}',
+        qrCameraHint: 'Point your camera',
+        cameraNotSupported: 'Camera is not supported by your browser',
+        cameraAccessDenied: 'Camera access denied. Please allow it in settings.',
+        cameraError: 'Camera error: ',
         qrPrev: 'Previous part',
         qrNext: 'Next part',
         qrPause: 'Pause auto-rotation',
@@ -397,7 +405,7 @@ async function createOffer() {
                 return;
             }
 
-            if (e.data === '__ack__' && sendAckResolver) {
+            if (e.data === '__ack__' && typeof sendAckResolver === 'function') {
                 if (sendAckCleanup) {
                     sendAckCleanup();
                     sendAckCleanup = null;
@@ -456,7 +464,9 @@ async function waitForSendBuffer(channel) {
 
 function waitForSendAck(channel) {
     return new Promise((resolve, reject) => {
-        sendAckResolver = resolve;
+        // Ensure any previous stale resolver is cleared before assigning new one
+        sendAckResolver = null;
+        sendAckCleanup = null;
 
         const cleanup = () => {
             if (sendAckResolver === resolve) sendAckResolver = null;
@@ -478,6 +488,8 @@ function waitForSendAck(channel) {
         channel.addEventListener('close', onClose, { once: true });
         channel.addEventListener('error', onError, { once: true });
         sendAckCleanup = cleanup;
+        // Assign resolver LAST — after listeners are set, to avoid race
+        sendAckResolver = resolve;
     });
 }
 
@@ -810,7 +822,7 @@ function generateChunkedQR(containerId, noteId, dataStr) {
         try {
             const size = getQrRenderSize();
             new QRCode(container, { text: partData, width: size, height: size, colorDark: '#000000', colorLight: '#ffffff', correctLevel: QRCode.CorrectLevel.M });
-            note.textContent = getTranslation('qrPart', { current: currentPart + 1, total: totalParts });
+            note.textContent = getTranslation('qrPart', { current: currentPart + 1, total: totalParts, cameraHint: getTranslation('qrCameraHint') });
             note.style.color = isPaused ? 'var(--blue)' : 'var(--orange)';
         } catch (e) {
             container.innerHTML = '<p style="color:var(--red);padding:12px;">Ошибка генерации части</p>';
@@ -944,7 +956,7 @@ async function openScanner(targetInputId) {
 
     try {
         if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-            throw new Error('Камера не поддерживается вашим браузером');
+            throw new Error(getTranslation('cameraNotSupported'));
         }
 
         scanStream = await navigator.mediaDevices.getUserMedia({ 
@@ -954,13 +966,13 @@ async function openScanner(targetInputId) {
         const video = document.getElementById('scanVideo');
         video.srcObject = scanStream;
         await video.play();
-        status.textContent = 'Наведите камеру на QR-код';
+        status.textContent = getTranslation('scanHint');
         startJsQRLoop();
     } catch (err) {
         if (err.name === 'NotAllowedError') {
-            status.textContent = 'Доступ к камере запрещен. Разрешите в настройках.';
+            status.textContent = getTranslation('cameraAccessDenied');
         } else {
-            status.textContent = 'Ошибка камеры: ' + err.message;
+            status.textContent = getTranslation('cameraError') + err.message;
         }
         status.style.color = 'var(--red)';
     }
