@@ -73,7 +73,19 @@ const i18n = {
         faqQ4: 'ЗАЧЕМ ЭТО НУЖНО?',
         faqA4: 'Никаких облачных хранилищ, логов и промежуточных серверов. Файлы не копятся в памяти там, где браузер умеет писать на диск сразу, а реальное ограничение на размер файла зависит от браузера и его встроенных лимитов.',
         faqQ5: 'КАКИЕ БРАУЗЕРЫ ПОДХОДЯТ?',
-        faqA5: 'Лучший режим для огромных файлов: Chrome, Edge и другие Chromium-браузеры на HTTPS — они умеют писать файл сразу на диск через File System Access API. Firefox и Safari поддерживают WebRTC, но без прямой записи на диск приложение использует fallback через скачивание, поэтому для очень больших файлов там возможны лимиты памяти.'
+        faqA5: 'Лучший режим для огромных файлов: Chrome, Edge и другие Chromium-браузеры на HTTPS — они умеют писать файл сразу на диск через File System Access API. Firefox и Safari поддерживают WebRTC, но без прямой записи на диск приложение использует fallback через скачивание, поэтому для очень больших файлов там возможны лимиты памяти.',
+        qrReady: 'Готово · {size}',
+        qrPart: 'Часть {current} из {total} · Наведите камеру',
+        qrPrev: 'Предыдущая часть',
+        qrNext: 'Следующая часть',
+        qrPause: 'Приостановить автопрокрутку',
+        qrPlay: 'Запустить автопрокрутку',
+        btnSaveFile: '📥 Выбрать папку',
+        recvStreamStatus: 'Получение файла с прямой записью на диск...',
+        saveCanceled: 'Выбор папки отменён. Нажмите кнопку ещё раз или <a href=\"#\" id=\"fallback-blob-link\" style=\"text-decoration:underline;color:inherit;font-weight:600;\">скачайте в память браузера</a>',
+        saveNotSupported: 'Запись на диск не поддерживается в этом браузере. Файл будет собран в памяти...',
+        saveFallbackActive: 'Запись на диск отменена. Файл будет собран в памяти...',
+        savePrompt: 'Нажмите \"Выбрать папку\" для потоковой записи на диск'
     },
     en: {
         brand: 'P2P File Transfer',
@@ -119,7 +131,19 @@ const i18n = {
         faqQ4: 'WHY DOES THIS MATTER?',
         faqA4: 'There are no cloud storages, logs, or intermediate servers. Files do not pile up in memory where direct disk writing is available, and the real file size limit depends on the browser and its built-in limits.',
         faqQ5: 'WHICH BROWSERS WORK BEST?',
-        faqA5: 'Best mode for huge files: Chrome, Edge, and other Chromium browsers over HTTPS because they can write directly to disk with the File System Access API. Firefox and Safari support WebRTC, but without direct disk writing the app falls back to browser download memory, so very large files may hit browser limits.'
+        faqA5: 'Best mode for huge files: Chrome, Edge, and other Chromium browsers over HTTPS because they can write directly to disk with the File System Access API. Firefox and Safari support WebRTC, but without direct disk writing the app falls back to browser download memory, so very large files may hit browser limits.',
+        qrReady: 'Ready · {size}',
+        qrPart: 'Part {current} of {total} · Point your camera',
+        qrPrev: 'Previous part',
+        qrNext: 'Next part',
+        qrPause: 'Pause auto-rotation',
+        qrPlay: 'Resume auto-rotation',
+        btnSaveFile: '📥 Choose folder',
+        recvStreamStatus: 'Receiving file with direct disk write...',
+        saveCanceled: 'Folder selection canceled. Click the button again or <a href=\"#\" id=\"fallback-blob-link\" style=\"text-decoration:underline;color:inherit;font-weight:600;\">download to browser memory</a>',
+        saveNotSupported: 'Direct disk write is not supported in this browser. File will be buffered in memory...',
+        saveFallbackActive: 'Disk write canceled. File will be buffered in memory...',
+        savePrompt: 'Click \"Choose folder\" for direct streaming to disk'
     }
 };
 
@@ -160,6 +184,14 @@ function setLang(lang) {
     });
     document.getElementById('lang-ru').classList.toggle('active', currentLang === 'ru');
     document.getElementById('lang-en').classList.toggle('active', currentLang === 'en');
+}
+
+function getTranslation(key, params = {}) {
+    let text = i18n[currentLang]?.[key] || i18n['ru']?.[key] || '';
+    for (const [k, v] of Object.entries(params)) {
+        text = text.replace(`{${k}}`, v);
+    }
+    return text;
 }
 
 function setMode(mode) {
@@ -612,13 +644,13 @@ async function createAnswer() {
                                         btnSave.style.display = 'none';
                                         channel.send('__ready_stream__');
                                         setStep('r', 3);
-                                        showStatus('recvStatus', 'info', 'Получение файла с прямой записью на диск...', true);
+                                        showStatus('recvStatus', 'info', getTranslation('recvStreamStatus'), true);
                                         document.getElementById('recvProgress').classList.add('visible');
                                         startTime = Date.now(); lastTime = startTime; lastRecv = 0;
                                     } catch (err) {
                                         console.warn('Save picker canceled or failed:', err);
                                         if (err.name === 'AbortError') {
-                                            showStatus('recvStatus', 'warning', 'Выбор папки отменён. Нажмите кнопку ещё раз или <a href="#" id="fallback-blob-link" style="text-decoration:underline;color:inherit;font-weight:600;">скачайте в память браузера</a>', false);
+                                            showStatus('recvStatus', 'warning', getTranslation('saveCanceled'), false);
                                             const fallbackLink = document.getElementById('fallback-blob-link');
                                             if (fallbackLink) {
                                                 fallbackLink.onclick = (event) => {
@@ -627,7 +659,7 @@ async function createAnswer() {
                                                     btnSave.style.display = 'none';
                                                     channel.send('__ready_blob__');
                                                     setStep('r', 3);
-                                                    showStatus('recvStatus', 'warning', 'Запись на диск отменена. Файл будет собран в памяти...', true);
+                                                    showStatus('recvStatus', 'warning', getTranslation('saveFallbackActive'), true);
                                                     document.getElementById('recvProgress').classList.add('visible');
                                                     startTime = Date.now(); lastTime = startTime; lastRecv = 0;
                                                 };
@@ -638,14 +670,14 @@ async function createAnswer() {
                                             btnSave.style.display = 'none';
                                             channel.send('__ready_blob__');
                                             setStep('r', 3);
-                                            showStatus('recvStatus', 'warning', 'Запись на диск не поддерживается в этом браузере. Файл будет собран в памяти...', true);
+                                            showStatus('recvStatus', 'warning', getTranslation('saveNotSupported'), true);
                                             document.getElementById('recvProgress').classList.add('visible');
                                             startTime = Date.now(); lastTime = startTime; lastRecv = 0;
                                         }
                                     }
                                 };
                             }
-                            showStatus('recvStatus', 'warning', 'Нажмите "Выбрать папку" для потоковой записи на диск', false);
+                            showStatus('recvStatus', 'warning', getTranslation('savePrompt'), false);
                         } else {
                             writableStream = null;
                             channel.send('__ready_blob__');
@@ -755,7 +787,7 @@ function generateChunkedQR(containerId, noteId, dataStr) {
         try {
             const size = getQrRenderSize();
             new QRCode(container, { text: dataStr, width: size, height: size, colorDark: '#000000', colorLight: '#ffffff', correctLevel: QRCode.CorrectLevel.M });
-            note.textContent = `Готово · ${fmtSize(dataStr.length)}`;
+            note.textContent = getTranslation('qrReady', { size: fmtSize(dataStr.length) });
             note.style.color = 'var(--text-muted)';
         } catch (e) {
             container.innerHTML = '<p style="color:var(--red);padding:12px;">Ошибка генерации QR</p>';
@@ -778,7 +810,7 @@ function generateChunkedQR(containerId, noteId, dataStr) {
         try {
             const size = getQrRenderSize();
             new QRCode(container, { text: partData, width: size, height: size, colorDark: '#000000', colorLight: '#ffffff', correctLevel: QRCode.CorrectLevel.M });
-            note.textContent = `Часть ${currentPart + 1} из ${totalParts} · Наведите камеру`;
+            note.textContent = getTranslation('qrPart', { current: currentPart + 1, total: totalParts });
             note.style.color = isPaused ? 'var(--blue)' : 'var(--orange)';
         } catch (e) {
             container.innerHTML = '<p style="color:var(--red);padding:12px;">Ошибка генерации части</p>';
@@ -831,7 +863,7 @@ function generateChunkedQR(containerId, noteId, dataStr) {
         const playBtn = document.getElementById(`${prefix}-qr-play`);
         if (playBtn) {
             playBtn.textContent = isPaused ? '▶' : '⏸';
-            playBtn.title = isPaused ? 'Запустить автопрокрутку' : 'Приостановить автопрокрутку';
+            playBtn.title = getTranslation(isPaused ? 'qrPlay' : 'qrPause');
         }
     }
 
@@ -847,7 +879,7 @@ function generateChunkedQR(containerId, noteId, dataStr) {
         prevBtn.id = `${prefix}-qr-prev`;
         prevBtn.innerHTML = '❮';
         prevBtn.type = 'button';
-        prevBtn.title = 'Предыдущая часть';
+        prevBtn.title = getTranslation('qrPrev');
         prevBtn.onclick = prevPart;
 
         const playBtn = document.createElement('button');
@@ -855,7 +887,7 @@ function generateChunkedQR(containerId, noteId, dataStr) {
         playBtn.id = `${prefix}-qr-play`;
         playBtn.innerHTML = '⏸';
         playBtn.type = 'button';
-        playBtn.title = 'Приостановить автопрокрутку';
+        playBtn.title = getTranslation('qrPause');
         playBtn.onclick = togglePause;
 
         const nextBtn = document.createElement('button');
@@ -863,7 +895,7 @@ function generateChunkedQR(containerId, noteId, dataStr) {
         nextBtn.id = `${prefix}-qr-next`;
         nextBtn.innerHTML = '❯';
         nextBtn.type = 'button';
-        nextBtn.title = 'Следующая часть';
+        nextBtn.title = getTranslation('qrNext');
         nextBtn.onclick = nextPart;
 
         controls.appendChild(prevBtn);
