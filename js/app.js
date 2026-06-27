@@ -736,6 +736,10 @@ function stopQRCycler() {
         clearInterval(qrCyclerInterval);
         qrCyclerInterval = null;
     }
+    const offerControls = document.getElementById('offer-qr-controls');
+    if (offerControls) offerControls.remove();
+    const answerControls = document.getElementById('answer-qr-controls');
+    if (answerControls) answerControls.remove();
 }
 
 function generateChunkedQR(containerId, noteId, dataStr) {
@@ -743,8 +747,11 @@ function generateChunkedQR(containerId, noteId, dataStr) {
     const container = document.getElementById(containerId);
     const note = document.getElementById(noteId);
     container.innerHTML = '';
+    const prefix = containerId === 'offerQR' ? 'offer' : 'answer';
 
     if (dataStr.length <= QR_MAX_CHUNK_SIZE) {
+        const existingControls = document.getElementById(`${prefix}-qr-controls`);
+        if (existingControls) existingControls.remove();
         try {
             const size = getQrRenderSize();
             new QRCode(container, { text: dataStr, width: size, height: size, colorDark: '#000000', colorLight: '#ffffff', correctLevel: QRCode.CorrectLevel.M });
@@ -762,25 +769,113 @@ function generateChunkedQR(containerId, noteId, dataStr) {
     }
     const totalParts = chunks.length;
     let currentPart = 0;
+    let isPaused = false;
 
-    function renderPart() {
+    function showPart(index) {
+        currentPart = (index + totalParts) % totalParts;
         const partData = `P2P|${totalParts}|${currentPart + 1}|${chunks[currentPart]}`;
         container.innerHTML = '';
-        
         try {
             const size = getQrRenderSize();
             new QRCode(container, { text: partData, width: size, height: size, colorDark: '#000000', colorLight: '#ffffff', correctLevel: QRCode.CorrectLevel.M });
             note.textContent = `Часть ${currentPart + 1} из ${totalParts} · Наведите камеру`;
-            note.style.color = 'var(--orange)';
+            note.style.color = isPaused ? 'var(--blue)' : 'var(--orange)';
         } catch (e) {
             container.innerHTML = '<p style="color:var(--red);padding:12px;">Ошибка генерации части</p>';
         }
-        
-        currentPart = (currentPart + 1) % totalParts;
+        updateControlsUI();
     }
 
-    renderPart();
-    qrCyclerInterval = setInterval(renderPart, 3500);
+    function startInterval() {
+        if (qrCyclerInterval) clearInterval(qrCyclerInterval);
+        qrCyclerInterval = setInterval(() => {
+            if (!isPaused) {
+                showPart(currentPart + 1);
+            }
+        }, 3500);
+    }
+
+    function togglePause() {
+        isPaused = !isPaused;
+        if (isPaused) {
+            if (qrCyclerInterval) {
+                clearInterval(qrCyclerInterval);
+                qrCyclerInterval = null;
+            }
+            showPart(currentPart);
+        } else {
+            showPart((currentPart + 1) % totalParts);
+            startInterval();
+        }
+    }
+
+    function nextPart() {
+        isPaused = true;
+        if (qrCyclerInterval) {
+            clearInterval(qrCyclerInterval);
+            qrCyclerInterval = null;
+        }
+        showPart(currentPart + 1);
+    }
+
+    function prevPart() {
+        isPaused = true;
+        if (qrCyclerInterval) {
+            clearInterval(qrCyclerInterval);
+            qrCyclerInterval = null;
+        }
+        showPart(currentPart - 1);
+    }
+
+    function updateControlsUI() {
+        const playBtn = document.getElementById(`${prefix}-qr-play`);
+        if (playBtn) {
+            playBtn.textContent = isPaused ? '▶' : '⏸';
+            playBtn.title = isPaused ? 'Запустить автопрокрутку' : 'Приостановить автопрокрутку';
+        }
+    }
+
+    // Create controls if they don't exist
+    let controls = document.getElementById(`${prefix}-qr-controls`);
+    if (!controls) {
+        controls = document.createElement('div');
+        controls.className = 'qr-controls';
+        controls.id = `${prefix}-qr-controls`;
+
+        const prevBtn = document.createElement('button');
+        prevBtn.className = 'qr-btn';
+        prevBtn.id = `${prefix}-qr-prev`;
+        prevBtn.innerHTML = '❮';
+        prevBtn.type = 'button';
+        prevBtn.title = 'Предыдущая часть';
+        prevBtn.onclick = prevPart;
+
+        const playBtn = document.createElement('button');
+        playBtn.className = 'qr-btn';
+        playBtn.id = `${prefix}-qr-play`;
+        playBtn.innerHTML = '⏸';
+        playBtn.type = 'button';
+        playBtn.title = 'Приостановить автопрокрутку';
+        playBtn.onclick = togglePause;
+
+        const nextBtn = document.createElement('button');
+        nextBtn.className = 'qr-btn';
+        nextBtn.id = `${prefix}-qr-next`;
+        nextBtn.innerHTML = '❯';
+        nextBtn.type = 'button';
+        nextBtn.title = 'Следующая часть';
+        nextBtn.onclick = nextPart;
+
+        controls.appendChild(prevBtn);
+        controls.appendChild(playBtn);
+        controls.appendChild(nextBtn);
+
+        // Insert controls between container and note
+        container.parentNode.insertBefore(controls, note);
+    }
+
+    showPart(0);
+    startInterval();
 }
 
 function switchTab(prefix, type, btnEl) {

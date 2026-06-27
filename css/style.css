@@ -428,6 +428,44 @@ body {
 
 .qr-size-note { font-size: 10px; color: var(--blue); text-align: center; font-weight: 500; }
 
+.qr-controls {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  margin: 8px 0;
+  width: 100%;
+}
+
+.qr-btn {
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  color: var(--text);
+  border-radius: 8px;
+  width: 40px;
+  height: 36px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 600;
+  transition: all 0.2s ease;
+  user-select: none;
+}
+
+.qr-btn:hover {
+  background: var(--surface);
+  border-color: var(--blue);
+  color: var(--blue);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(127, 178, 255, 0.15);
+}
+
+.qr-btn:active {
+  transform: translateY(0);
+}
+
 .scan-btn {
   display: flex;
   align-items: center;
