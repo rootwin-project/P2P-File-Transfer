@@ -18,6 +18,7 @@ let totalExpectedChunks = 0;
 let recvBuffers = [];
 let recvTotal = 0;
 let writableStream = null;
+let writeQueue = Promise.resolve();
 let sendAckResolver = null;
 let sendAckCleanup = null;
 
@@ -89,7 +90,39 @@ const i18n = {
         saveCanceled: 'Выбор папки отменён. Нажмите кнопку ещё раз или <a href=\"#\" id=\"fallback-blob-link\" style=\"text-decoration:underline;color:inherit;font-weight:600;\">скачайте в память браузера</a>',
         saveNotSupported: 'Запись на диск не поддерживается в этом браузере. Файл будет собран в памяти...',
         saveFallbackActive: 'Запись на диск отменена. Файл будет собран в памяти...',
-        savePrompt: 'Нажмите \"Выбрать папку\" для потоковой записи на диск'
+        savePrompt: 'Нажмите \"Выбрать папку\" для потоковой записи на диск',
+        errCrypto: 'Ошибка загрузки криптомодуля',
+        statusConnected: 'Подключено. Ожидание готовности получателя...',
+        statusReadyStream: 'Получатель готов. Отправка файла на диск...',
+        statusReadyBlob: 'Получатель готов. Передача файла...',
+        errCreateKey: 'Ошибка создания ключа: ',
+        statusSentOk: 'Файл успешно отправлен!',
+        errTransfer: 'Ошибка передачи: ',
+        statusApplyingAnswer: 'Применение ответа...',
+        errBadAnswerKey: 'Неверный формат ключа ответа',
+        errConnect: 'Ошибка подключения: ',
+        errBadKey: 'Неверный формат ключа',
+        statusFileReceived: 'Файл "{name}" ({size}) успешно получен!',
+        statusBrowserFallback: 'Браузер не умеет писать напрямую на диск. Файл будет скачан в конце.',
+        statusChannelOpen: 'Канал открыт. Ожидание метаданных...',
+        statusConnReady: 'Соединение готово. Ожидание файла...',
+        errCreateAnswer: 'Ошибка создания ответа: ',
+        errCancelBuffer: 'Канал передачи закрыт',
+        errCancelBufferErr: 'Ошибка канала передачи',
+        progressSent: 'Отправлено: ',
+        progressDone: 'Готово',
+        progressEtaDone: '0 сек',
+        copied: 'Скопировано!',
+        creating: 'Создание...',
+        keyCreated: 'Ключ создан',
+        ansCreated: 'Ответ создан',
+        qrDisplaying: 'Отображение ключа...',
+        qrSuccess: 'QR-код успешно собран!',
+        qrScanned: 'QR-код отсканирован!',
+        partsCollected: 'Собрано частей: {collected} из {total}',
+        etaSeconds: '{seconds} сек',
+        etaMinutesSeconds: '{minutes} мин {seconds} сек',
+        etaHoursMinutes: '{hours} ч {minutes} мин'
     },
     en: {
         brand: 'P2P File Transfer',
@@ -151,7 +184,39 @@ const i18n = {
         saveCanceled: 'Folder selection canceled. Click the button again or <a href=\"#\" id=\"fallback-blob-link\" style=\"text-decoration:underline;color:inherit;font-weight:600;\">download to browser memory</a>',
         saveNotSupported: 'Direct disk write is not supported in this browser. File will be buffered in memory...',
         saveFallbackActive: 'Disk write canceled. File will be buffered in memory...',
-        savePrompt: 'Click \"Choose folder\" for direct streaming to disk'
+        savePrompt: 'Click \"Choose folder\" for direct streaming to disk',
+        errCrypto: 'Failed to load crypto module',
+        statusConnected: 'Connected. Waiting for receiver to get ready...',
+        statusReadyStream: 'Receiver ready. Streaming file to disk...',
+        statusReadyBlob: 'Receiver ready. Transferring file...',
+        errCreateKey: 'Error creating key: ',
+        statusSentOk: 'File sent successfully!',
+        errTransfer: 'Transfer error: ',
+        statusApplyingAnswer: 'Applying response...',
+        errBadAnswerKey: 'Invalid response key format',
+        errConnect: 'Connection error: ',
+        errBadKey: 'Invalid key format',
+        statusFileReceived: 'File "{name}" ({size}) received successfully!',
+        statusBrowserFallback: 'Browser cannot write directly to disk. File will be buffered in memory and downloaded at the end.',
+        statusChannelOpen: 'Channel open. Waiting for metadata...',
+        statusConnReady: 'Connection ready. Waiting for file...',
+        errCreateAnswer: 'Error creating response: ',
+        errCancelBuffer: 'Transfer channel closed',
+        errCancelBufferErr: 'Transfer channel error',
+        progressSent: 'Sent: ',
+        progressDone: 'Done',
+        progressEtaDone: '0 sec',
+        copied: 'Copied!',
+        creating: 'Creating...',
+        keyCreated: 'Key created',
+        ansCreated: 'Response created',
+        qrDisplaying: 'Displaying key...',
+        qrSuccess: 'QR code successfully assembled!',
+        qrScanned: 'QR code scanned!',
+        partsCollected: 'Parts collected: {collected} of {total}',
+        etaSeconds: '{seconds} sec',
+        etaMinutesSeconds: '{minutes} min {seconds} sec',
+        etaHoursMinutes: '{hours} h {minutes} min'
     }
 };
 
@@ -266,9 +331,9 @@ function fmtName(name) {
 
 function fmtETA(seconds) {
     if (!isFinite(seconds) || seconds <= 0) return '—';
-    if (seconds < 60) return Math.ceil(seconds) + ' сек';
-    if (seconds < 3600) return Math.floor(seconds / 60) + ' мин ' + Math.ceil(seconds % 60) + ' сек';
-    return Math.floor(seconds / 3600) + ' ч ' + Math.floor((seconds % 3600) / 60) + ' мин';
+    if (seconds < 60) return getTranslation('etaSeconds', { seconds: Math.ceil(seconds) });
+    if (seconds < 3600) return getTranslation('etaMinutesSeconds', { minutes: Math.floor(seconds / 60), seconds: Math.ceil(seconds % 60) });
+    return getTranslation('etaHoursMinutes', { hours: Math.floor(seconds / 3600), minutes: Math.floor((seconds % 3600) / 60) });
 }
 
 function fmtSpeed(bps) {
@@ -281,10 +346,10 @@ function copyText(inputId, btnId) {
     const text = document.getElementById(inputId).value;
     navigator.clipboard.writeText(text).then(() => {
         const btn = document.getElementById(btnId);
-        btn.textContent = 'Скопировано!';
+        btn.textContent = getTranslation('copied');
         btn.classList.add('copied');
         setTimeout(() => {
-            btn.textContent = 'Копировать';
+            btn.textContent = getTranslation('copy');
             btn.classList.remove('copied');
         }, 2000);
     });
@@ -325,7 +390,7 @@ function resetSender(preserveStatus = false) {
     sendAckResolver = null;
     stopQRCycler();
     clearFile();
-    document.getElementById('btnCreateOffer').textContent = 'Создать ключ';
+    document.getElementById('btnCreateOffer').textContent = getTranslation('btnCreate');
     const offerKeyBox = document.getElementById('offerKeyBox');
     if (offerKeyBox) offerKeyBox.style.display = 'none';
     document.getElementById('offerKey').value = '';
@@ -335,10 +400,10 @@ function resetSender(preserveStatus = false) {
     if (!preserveStatus) {
         document.getElementById('sendStatus').className = 'status-bar';
         document.getElementById('sendStatus').textContent = '';
+        document.getElementById('sendProgress').classList.remove('visible');
+        resetSendProgressUI();
+        setStep('s', 1);
     }
-    document.getElementById('sendProgress').classList.remove('visible');
-    resetSendProgressUI();
-    setStep('s', 1);
 }
 
 function resetReceiver(preserveStatus = false) {
@@ -347,6 +412,7 @@ function resetReceiver(preserveStatus = false) {
     recvBuffers = [];
     recvTotal = 0;
     writableStream = null;
+    writeQueue = Promise.resolve();
     scanTargetId = null;
     
     document.getElementById('offerInput').value = '';
@@ -356,28 +422,28 @@ function resetReceiver(preserveStatus = false) {
     if (!preserveStatus) {
         document.getElementById('recvStatus').className = 'status-bar';
         document.getElementById('recvStatus').textContent = '';
+        document.getElementById('recvProgress').classList.remove('visible');
+        resetRecvProgressUI();
+        setStep('r', 1);
     }
-    document.getElementById('recvProgress').classList.remove('visible');
-    resetRecvProgressUI();
     const saveBtn = document.getElementById('btnSaveFile');
     if (saveBtn) {
         saveBtn.style.display = 'none';
         saveBtn.onclick = null;
     }
-    setStep('r', 1);
 }
 
 async function createOffer() {
     if (!selectedFile) return;
     if (!await ensureCrypto()) {
-        showStatus('sendStatus', 'error', 'Не удалось загрузить криптомодуль');
+        showStatus('sendStatus', 'error', getTranslation('errCrypto'));
         return;
     }
     
     const btn = document.getElementById('btnCreateOffer');
-    const defaultLabel = 'Создать ключ соединения →';
+    const defaultLabel = getTranslation('btnCreate');
     btn.disabled = true;
-    btn.innerHTML = '<div class="spinner"></div> Создание...';
+    btn.innerHTML = '<div class="spinner"></div> ' + getTranslation('creating');
     try {
         senderPC = new RTCPeerConnection({ iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] });
         const channel = senderPC.createDataChannel('fileTransfer', { ordered: true });
@@ -386,20 +452,20 @@ async function createOffer() {
 
         channel.onopen = () => {
             setStep('s', 4);
-            showStatus('sendStatus', 'info', 'Подключено. Ожидание готовности получателя...', true);
+            showStatus('sendStatus', 'info', getTranslation('statusConnected'), true);
             channel.send(JSON.stringify({ __meta__: true, name: selectedFile.name, size: selectedFile.size }));
         };
 
         channel.onmessage = (e) => {
             if (e.data === '__ready_stream__') {
-                showStatus('sendStatus', 'info', 'Получатель готов. Стримим файл на диск...', true);
+                showStatus('sendStatus', 'info', getTranslation('statusReadyStream'), true);
                 document.getElementById('sendProgress').classList.add('visible');
                 sendFileChunked(channel, selectedFile, true);
                 return;
             }
 
             if (e.data === '__ready_blob__') {
-                showStatus('sendStatus', 'info', 'Получатель готов. Передача файла...', true);
+                showStatus('sendStatus', 'info', getTranslation('statusReadyBlob'), true);
                 document.getElementById('sendProgress').classList.add('visible');
                 sendFileChunked(channel, selectedFile, false);
                 return;
@@ -431,13 +497,13 @@ async function createOffer() {
         const packedKey = await pack_key(sdpData);
         
         document.getElementById('offerKey').value = packedKey;
-        btn.innerHTML = 'Ключ создан';
+        btn.innerHTML = getTranslation('keyCreated');
         
         generateChunkedQR('offerQR', 'offerQRNote', packedKey);
         setStep('s', 3);
     } catch (e) {
         if (senderPC) { senderPC.close(); senderPC = null; }
-        showStatus('sendStatus', 'error', 'Ошибка создания ключа: ' + e.message);
+        showStatus('sendStatus', 'error', getTranslation('errCreateKey') + e.message);
         btn.innerHTML = defaultLabel;
         btn.disabled = !selectedFile;
     }
@@ -453,8 +519,8 @@ async function waitForSendBuffer(channel) {
             channel.removeEventListener('error', onError);
         };
         const onLow = () => { cleanup(); resolve(); };
-        const onClose = () => { cleanup(); reject(new Error('Канал передачи закрыт')); };
-        const onError = () => { cleanup(); reject(new Error('Ошибка канала передачи')); };
+        const onClose = () => { cleanup(); reject(new Error(getTranslation('errCancelBuffer'))); };
+        const onError = () => { cleanup(); reject(new Error(getTranslation('errCancelBufferErr'))); };
 
         channel.addEventListener('bufferedamountlow', onLow, { once: true });
         channel.addEventListener('close', onClose, { once: true });
@@ -477,12 +543,12 @@ function waitForSendAck(channel) {
 
         const onClose = () => {
             cleanup();
-            reject(new Error('Канал передачи закрыт'));
+            reject(new Error(getTranslation('errCancelBuffer')));
         };
 
         const onError = () => {
             cleanup();
-            reject(new Error('Ошибка канала передачи'));
+            reject(new Error(getTranslation('errCancelBufferErr')));
         };
 
         channel.addEventListener('close', onClose, { once: true });
@@ -502,7 +568,7 @@ async function sendFileChunked(channel, file, requireAck = false) {
     try {
         while (offset < file.size) {
             await waitForSendBuffer(channel);
-            if (channel.readyState !== 'open') throw new Error('Канал передачи не открыт');
+            if (channel.readyState !== 'open') throw new Error(getTranslation('errCancelBuffer'));
 
             const chunk = await file.slice(offset, offset + FILE_CHUNK_SIZE).arrayBuffer();
             const ackPromise = requireAck ? waitForSendAck(channel) : null;
@@ -511,7 +577,7 @@ async function sendFileChunked(channel, file, requireAck = false) {
             offset += chunk.byteLength;
 
             const pct = file.size ? Math.min(100, Math.round(offset / file.size * 100)) : 100;
-            setProgress('progressFill', 'sendSent', 'progressPct', pct, `Отправлено: ${fmtSize(offset)} / ${fmtSize(file.size)}`);
+            setProgress('progressFill', 'sendSent', 'progressPct', pct, `${getTranslation('progressSent')}${fmtSize(offset)} / ${fmtSize(file.size)}`);
 
             const now = Date.now();
             const elapsed = (now - startTime) / 1000;
@@ -533,14 +599,14 @@ async function sendFileChunked(channel, file, requireAck = false) {
         await waitForSendBuffer(channel);
         if (channel.readyState === 'open') {
             channel.send('__done__');
-            showStatus('sendStatus', 'success', 'Файл успешно отправлен!');
-            setProgress('progressFill', 'sendSent', 'progressPct', 100, 'Завершено');
-            document.getElementById('sendETA').textContent = '0 сек';
+            showStatus('sendStatus', 'success', getTranslation('statusSentOk'));
+            setProgress('progressFill', 'sendSent', 'progressPct', 100, getTranslation('progressDone'));
+            document.getElementById('sendETA').textContent = getTranslation('progressEtaDone');
             document.getElementById('sendSent').textContent = fmtSize(file.size) + ' / ' + fmtSize(file.size);
             setTimeout(() => resetSender(true), 2000);
         }
     } catch (e) {
-        showStatus('sendStatus', 'error', 'Ошибка передачи: ' + e.message);
+        showStatus('sendStatus', 'error', getTranslation('errTransfer') + e.message);
     }
 }
 
@@ -548,12 +614,12 @@ async function applyAnswer() {
     const rawKey = document.getElementById('answerInput').value.trim();
     if (!rawKey) return;
     if (!await ensureCrypto()) {
-        showStatus('sendStatus', 'error', 'Не удалось загрузить криптомодуль');
+        showStatus('sendStatus', 'error', getTranslation('errCrypto'));
         return;
     }
 
     setStep('s', 4);
-    showStatus('sendStatus', 'info', 'Применение ответа...', true);
+    showStatus('sendStatus', 'info', getTranslation('statusApplyingAnswer'), true);
 
     let answerObj;
     try {
@@ -563,14 +629,14 @@ async function applyAnswer() {
         try {
             answerObj = JSON.parse(rawKey);
         } catch {
-            return showStatus('sendStatus', 'error', 'Неверный формат ключа ответа');
+            return showStatus('sendStatus', 'error', getTranslation('errBadAnswerKey'));
         }
     }
 
     try {
         await senderPC.setRemoteDescription(new RTCSessionDescription(answerObj));
     } catch (e) {
-        showStatus('sendStatus', 'error', 'Ошибка подключения: ' + e.message);
+        showStatus('sendStatus', 'error', getTranslation('errConnect') + e.message);
     }
 }
 
@@ -578,7 +644,7 @@ async function createAnswer() {
     const rawKey = document.getElementById('offerInput').value.trim();
     if (!rawKey) return;
     if (!await ensureCrypto()) {
-        showStatus('recvStatus', 'error', 'Не удалось загрузить криптомодуль');
+        showStatus('recvStatus', 'error', getTranslation('errCrypto'));
         return;
     }
 
@@ -590,7 +656,7 @@ async function createAnswer() {
         try {
             offerObj = JSON.parse(rawKey);
         } catch {
-            return showStatus('recvStatus', 'error', 'Неверный формат ключа');
+            return showStatus('recvStatus', 'error', getTranslation('errBadKey'));
         }
     }
 
@@ -612,11 +678,20 @@ async function createAnswer() {
             channel.onmessage = async (ev) => {
             if (typeof ev.data === 'string') {
                 if (ev.data === '__done__') {
+                    // Show success UI immediately, before waiting for disk close
+                    showStatus('recvStatus', 'success', getTranslation('statusFileReceived', { name: fmtName(fileName), size: fmtSize(fileSize) }));
+                    setProgress('recvProgressFill', 'recvReceived', 'recvProgressPct', 100, getTranslation('progressDone'));
+                    document.getElementById('recvETA').textContent = getTranslation('progressEtaDone');
+                    document.getElementById('recvReceived').textContent = fmtSize(fileSize) + ' / ' + fmtSize(fileSize);
+
                     if (writableStream) {
-                        try {
-                            await writableStream.close();
-                        } catch (e) { console.error('Ошибка закрытия потока:', e); }
-                        writableStream = null;
+                        // Close stream in background — don't block UI
+                        writeQueue.then(async () => {
+                            try {
+                                await writableStream.close();
+                            } catch (e) { console.error('Error closing stream:', e); }
+                            writableStream = null;
+                        });
                     } else {
                         const blob = new Blob(recvBuffers);
                         const url = URL.createObjectURL(blob);
@@ -625,10 +700,6 @@ async function createAnswer() {
                         URL.revokeObjectURL(url);
                     }
 
-                    showStatus('recvStatus', 'success', `Файл "${fmtName(fileName)}" (${fmtSize(fileSize)}) успешно получен!`);
-                    setProgress('recvProgressFill', 'recvReceived', 'recvProgressPct', 100, 'Завершено');
-                    document.getElementById('recvETA').textContent = '0 сек';
-                    
                     setTimeout(() => resetReceiver(true), 3000);
                     return;
                 }
@@ -648,13 +719,14 @@ async function createAnswer() {
                             const btnSave = document.getElementById('btnSaveFile');
                             if (btnSave) {
                                 btnSave.style.display = 'inline-flex';
-                                btnSave.textContent = '📥 Выбрать папку';
+                                btnSave.textContent = getTranslation('btnSaveFile');
                                 btnSave.onclick = async () => {
                                     try {
                                         const handle = await window.showSaveFilePicker({ suggestedName: fileName });
                                         writableStream = await handle.createWritable();
+                                        writeQueue = Promise.resolve();
                                         btnSave.style.display = 'none';
-                                        channel.send('__ready_stream__');
+                                        channel.send('__ready_blob__');
                                         setStep('r', 3);
                                         showStatus('recvStatus', 'info', getTranslation('recvStreamStatus'), true);
                                         document.getElementById('recvProgress').classList.add('visible');
@@ -677,7 +749,6 @@ async function createAnswer() {
                                                 };
                                             }
                                         } else {
-                                            // Fallback automatically if it's a TypeError or NotSupportedError (e.g. Samsung Internet stub)
                                             writableStream = null;
                                             btnSave.style.display = 'none';
                                             channel.send('__ready_blob__');
@@ -694,7 +765,7 @@ async function createAnswer() {
                             writableStream = null;
                             channel.send('__ready_blob__');
                             setStep('r', 3);
-                            showStatus('recvStatus', 'warning', 'Браузер не умеет писать напрямую на диск. Файл будет собран в памяти и скачан в конце.', true);
+                            showStatus('recvStatus', 'warning', getTranslation('statusBrowserFallback'), true);
                             document.getElementById('recvProgress').classList.add('visible');
                             startTime = Date.now(); lastTime = startTime; lastRecv = 0;
                         }
@@ -704,14 +775,15 @@ async function createAnswer() {
             }
 
             if (writableStream) {
-                try {
-                    await writableStream.write(ev.data);
-                    if (channel.readyState === 'open') {
-                        channel.send('__ack__');
+                const chunkData = new Uint8Array(ev.data);
+                writeQueue = writeQueue.then(async () => {
+                    try {
+                        await writableStream.write(chunkData);
+                    } catch (e) {
+                        console.error('Write error:', e);
+                        showStatus('recvStatus', 'error', 'Write error: ' + e.message);
                     }
-                } catch (e) {
-                    console.error('Write error:', e);
-                }
+                });
             } else {
                 recvBuffers.push(ev.data);
             }
@@ -736,7 +808,7 @@ async function createAnswer() {
 
             channel.onopen = () => {
                 setStep('r', 3);
-                showStatus('recvStatus', 'info', 'Канал открыт. Ожидание метаданных...', true);
+                showStatus('recvStatus', 'info', getTranslation('statusChannelOpen'), true);
                 document.getElementById('recvProgress').classList.add('visible');
             };
         };
@@ -759,11 +831,11 @@ async function createAnswer() {
         document.getElementById('answerKey').value = packedKey;
         generateChunkedQR('answerQR', 'answerQRNote', packedKey);
         setStep('r', 3);
-        showStatus('recvStatus', 'info', 'Соединение готово. Ожидание файла...', true);
+        showStatus('recvStatus', 'info', getTranslation('statusConnReady'), true);
         document.getElementById('recvProgress').classList.add('visible');
     } catch (e) {
         if (receiverPC) { receiverPC.close(); receiverPC = null; }
-        showStatus('recvStatus', 'error', 'Ошибка создания ответа: ' + e.message);
+        showStatus('recvStatus', 'error', getTranslation('errCreateAnswer') + e.message);
     }
 }
 
@@ -1027,7 +1099,7 @@ function processScannedChunk(data) {
             scannedChunks[idx] = payload;
 
             const collected = Object.keys(scannedChunks).length;
-            status.textContent = `Собрано частей: ${collected} из ${total}`;
+            status.textContent = getTranslation('partsCollected', { collected: collected, total: total });
             status.style.color = 'var(--blue)';
 
             if (collected === total) {
@@ -1036,7 +1108,7 @@ function processScannedChunk(data) {
                     fullData += scannedChunks[i];
                 }
                 document.getElementById(scanTargetId).value = fullData;
-                status.textContent = 'QR-код успешно собран!';
+                status.textContent = getTranslation('qrSuccess');
                 status.style.color = 'var(--green)';
                 setTimeout(closeScanner, 800);
             }
@@ -1045,7 +1117,7 @@ function processScannedChunk(data) {
     }
 
     document.getElementById(scanTargetId).value = data;
-    status.textContent = 'QR-код отсканирован!';
+    status.textContent = getTranslation('qrScanned');
     status.style.color = 'var(--green)';
     setTimeout(closeScanner, 500);
 }
