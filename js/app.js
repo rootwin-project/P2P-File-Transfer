@@ -132,11 +132,11 @@ async function ensureCrypto() {
     if (!cryptoLoadPromise) {
         cryptoLoadPromise = (async () => {
             try {
-                const cryptoModule = await import(new URL('../pkg/webrtc_crypto.js', import.meta.url).href);
+                const cryptoModule = await import('../pkg/webrtc_crypto.js');
                 initCrypto = cryptoModule.default;
                 pack_key = cryptoModule.pack_key;
                 unpack_key = cryptoModule.unpack_key;
-                await initCrypto({ module_or_path: new URL('../pkg/webrtc_crypto_bg.wasm', import.meta.url).href });
+                await initCrypto();
                 console.log('WASM успешно запущен!');
                 return true;
             } catch (e) {
@@ -384,7 +384,7 @@ async function createOffer() {
             senderPC.onicegatheringstatechange = () => {
                 if (senderPC.iceGatheringState === 'complete') resolve();
             };
-            setTimeout(resolve, 3000);
+            setTimeout(resolve, 7000);
         });
 
         const sdpData = JSON.stringify({ sdp: senderPC.localDescription.sdp, type: senderPC.localDescription.type });
@@ -599,7 +599,8 @@ async function createAnswer() {
                         fileName = meta.name;
                         fileSize = meta.size;
 
-                        if ('showSaveFilePicker' in window) {
+                        const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+                        if ('showSaveFilePicker' in window && !isMobile) {
                             const btnSave = document.getElementById('btnSaveFile');
                             if (btnSave) {
                                 btnSave.style.display = 'inline-flex';
@@ -615,8 +616,32 @@ async function createAnswer() {
                                         document.getElementById('recvProgress').classList.add('visible');
                                         startTime = Date.now(); lastTime = startTime; lastRecv = 0;
                                     } catch (err) {
-                                        console.warn('Save picker canceled:', err);
-                                        showStatus('recvStatus', 'warning', 'Выбор папки отменён. Нажмите кнопку ещё раз.', false);
+                                        console.warn('Save picker canceled or failed:', err);
+                                        if (err.name === 'AbortError') {
+                                            showStatus('recvStatus', 'warning', 'Выбор папки отменён. Нажмите кнопку ещё раз или <a href="#" id="fallback-blob-link" style="text-decoration:underline;color:inherit;font-weight:600;">скачайте в память браузера</a>', false);
+                                            const fallbackLink = document.getElementById('fallback-blob-link');
+                                            if (fallbackLink) {
+                                                fallbackLink.onclick = (event) => {
+                                                    event.preventDefault();
+                                                    writableStream = null;
+                                                    btnSave.style.display = 'none';
+                                                    channel.send('__ready_blob__');
+                                                    setStep('r', 3);
+                                                    showStatus('recvStatus', 'warning', 'Запись на диск отменена. Файл будет собран в памяти...', true);
+                                                    document.getElementById('recvProgress').classList.add('visible');
+                                                    startTime = Date.now(); lastTime = startTime; lastRecv = 0;
+                                                };
+                                            }
+                                        } else {
+                                            // Fallback automatically if it's a TypeError or NotSupportedError (e.g. Samsung Internet stub)
+                                            writableStream = null;
+                                            btnSave.style.display = 'none';
+                                            channel.send('__ready_blob__');
+                                            setStep('r', 3);
+                                            showStatus('recvStatus', 'warning', 'Запись на диск не поддерживается в этом браузере. Файл будет собран в памяти...', true);
+                                            document.getElementById('recvProgress').classList.add('visible');
+                                            startTime = Date.now(); lastTime = startTime; lastRecv = 0;
+                                        }
                                     }
                                 };
                             }
@@ -681,7 +706,7 @@ async function createAnswer() {
             receiverPC.onicegatheringstatechange = () => {
                 if (receiverPC.iceGatheringState === 'complete') resolve();
             };
-            setTimeout(resolve, 3000);
+            setTimeout(resolve, 7000);
         });
 
         const sdpData = JSON.stringify({ sdp: receiverPC.localDescription.sdp, type: receiverPC.localDescription.type });
