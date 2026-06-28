@@ -1,0 +1,12 @@
+{
+  "name": "P2P File Transfer",
+  "short_name": "P2P Transfer",
+  "icons": [
+    { "src": "images/favicon-32x32.png", "sizes": "32x32", "type": "image/png" },
+    { "src": "images/apple-touch-icon.png", "sizes": "180x180", "type": "image/png" }
+  ],
+  "start_url": ".",
+  "display": "standalone",
+  "background_color": "#0d0d0d",
+  "theme_color": "#0d0d0d"
+}
