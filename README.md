@@ -1,17 +1,22 @@
 # P2P File Transfer
 
-Высокопроизводительное веб-приложение для прямой передачи файлов между пользователями (Peer-to-Peer). Основная логика обработки данных написана на языке Rust и скомпилирована в WebAssembly (WASM), что гарантирует безопасность памяти и максимальную скорость работы непосредственно в браузере.
+A high-performance peer-to-peer (P2P) file transfer web application. The core data processing logic is written in Rust and compiled into WebAssembly (WASM), ensuring memory safety and maximum speed directly within the browser.
 
-## 🚀 Ключевые особенности
+## 🌐 Live Demo
 
-- **Абсолютная конфиденциальность:** Файлы передаются напрямую от одного пользователя к другому (WebRTC). Данные не загружаются и не сохраняются на промежуточных серверах.
-- **Высокая скорость:** Благодаря использованию Rust и WebAssembly операции по нарезке файлов на чанки и контролю целостности выполняются на околонативной скорости.
-- **Нулевая установка:** Приложение полностью работает внутри любого современного браузера, не требуя установки плагинов или десктопных клиентов.
-- **Адаптивный интерфейс:** Лаконичный и удобный UI для быстрой отправки и получения файлов.
+The application is fully deployed and ready to use on GitHub Pages:
+👉 **[Launch P2P File Transfer](https://rootwin-project.github.io/P2P-File-Transfer/)**
 
-## 🛠 Технологический стек
+## 🚀 Features
 
-- **Rust** — разработка ядра системы, логики разбиения данных и управления памятью.
-- **WebAssembly (WASM)** — компиляция серверного кода для безопасного и быстрого выполнения в песочнице браузера.
-- **wasm-pack** — сборщик проекта и генератор высокоуровневых биндингов между Rust и JavaScript.
-- **HTML5 / CSS3 / JavaScript** — построение интерфейса, стилизация и интеграция с браузерным WebRTC API.
+- **Absolute Privacy:** Files are transferred directly from peer to peer via WebRTC. Your data is never uploaded to or stored on any intermediate servers.
+- **Blazing Fast:** Thanks to Rust and WebAssembly, file chunking and integrity validation are executed at near-native speeds.
+- **Zero Installation:** Works fully inside any modern web browser without requiring any plugins or desktop applications.
+- **Responsive Design:** Clean, modern, and user-friendly UI for seamless file sharing.
+
+## 🛠 Tech Stack
+
+- **Rust** — Core system logic, file chunking, and memory management.
+- **WebAssembly (WASM)** — High-performance execution sandbox within the browser.
+- **wasm-pack** — Build tool and JavaScript/Rust binding generator.
+- **HTML5 / CSS3 / JavaScript** — Frontend user interface and WebRTC API integration.
