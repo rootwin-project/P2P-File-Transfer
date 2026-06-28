@@ -10,7 +10,6 @@
 [![WebRTC](https://img.shields.io/badge/transport-WebRTC-orange)](https://webrtc.org/)
 [![WASM](https://img.shields.io/badge/core-Rust%20%2B%20WASM-red)](https://webassembly.org/)
 
-![Screenshot](images/screenshot.png)
 
 ## 🌐 Live Demo
 
