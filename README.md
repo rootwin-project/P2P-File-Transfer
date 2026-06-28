@@ -1,5 +1,7 @@
 # P2P File Transfer
 
+<img width="1916" height="941" alt="image" src="https://github.com/user-attachments/assets/abba3cf7-b5a9-4ee9-945b-26a0c3515f51" />
+
 A high-performance peer-to-peer (P2P) file transfer web application. The core data processing logic is written in Rust and compiled into WebAssembly (WASM), ensuring memory safety and maximum speed directly within the browser.
 
 ## 🌐 Live Demo
