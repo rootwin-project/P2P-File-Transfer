@@ -1,28 +1,100 @@
-# P2P File Transfer
+# P2P File Transfer — Secure Browser-to-Browser File Sharing
 
 <img width="1916" height="941" alt="image" src="https://github.com/user-attachments/assets/abba3cf7-b5a9-4ee9-945b-26a0c3515f51" />
 
-A high-performance peer-to-peer (P2P) file transfer web application. The core data processing logic is written in Rust and compiled into WebAssembly (WASM), ensuring memory safety and maximum speed directly within the browser.
+> Send files directly between browsers with no server, no upload, no size limit.  
+> Built with WebRTC + Rust/WebAssembly + AES-256-GCM encryption.
+
+[![Live Demo](https://img.shields.io/badge/demo-live-brightgreen)](https://rootwin-project.github.io/P2P-File-Transfer/)
+[![License](https://img.shields.io/badge/license-Apache%202.0-blue)](LICENSE)
+[![WebRTC](https://img.shields.io/badge/transport-WebRTC-orange)](https://webrtc.org/)
+[![WASM](https://img.shields.io/badge/core-Rust%20%2B%20WASM-red)](https://webassembly.org/)
+
+![Screenshot](images/screenshot.png)
 
 ## 🌐 Live Demo
 
-The application is fully deployed and ready to use on GitHub Pages:
-👉 **[Launch P2P File Transfer](https://rootwin-project.github.io/P2P-File-Transfer/)**
+👉 **[Open P2P File Transfer](https://rootwin-project.github.io/P2P-File-Transfer/)**
+
+No installation. Works in any modern browser. Free forever.
+
+---
+
+## What is P2P File Transfer?
+
+P2P File Transfer is an **open-source, browser-based tool** for sending files directly between two devices 
+without routing data through any server. It uses **WebRTC Data Channels** for peer-to-peer connectivity 
+and encrypts every transfer with **AES-256-GCM** end-to-end encryption.
+
+The file chunking and integrity logic is written in **Rust**, compiled to **WebAssembly**, and runs 
+natively inside your browser — no plugins, no installs, no accounts.
+
+---
 
 ## 🚀 Features
 
-- **Absolute Privacy:** Files are transferred directly from peer to peer via WebRTC. Your data is never uploaded to or stored on any intermediate servers.
-- **Blazing Fast:** Thanks to Rust and WebAssembly, file chunking and integrity validation are executed at near-native speeds.
-- **Zero Installation:** Works fully inside any modern web browser without requiring any plugins or desktop applications.
-- **Responsive Design:** Clean, modern, and user-friendly UI for seamless file sharing.
+| Feature | Detail |
+|---|---|
+| 🔒 End-to-end encrypted | AES-256-GCM via Web Crypto API, PBKDF2 key derivation |
+| 🚫 No server storage | Files never touch any server — pure peer-to-peer via WebRTC |
+| ⚡ Near-native speed | File processing in Rust + WebAssembly |
+| 📦 No size limit | Transfer is only limited by your connection speed |
+| 🌐 Zero install | Works in any modern browser (Chrome, Firefox, Edge, Safari) |
+| 📱 Responsive | Mobile and desktop friendly |
+| 🆓 Free & open source | Apache 2.0 license |
+
+---
+
+## How It Works
+
+1. **Sender** opens the app and selects a file
+2. A **WebRTC offer** (SDP) is generated — copy or share it via QR code
+3. **Receiver** pastes the offer, generates an **answer** (SDP)
+4. Sender accepts the answer → **direct P2P connection** is established
+5. File is chunked, **encrypted**, and streamed directly to the receiver
+6. Receiver decrypts and reassembles the file locally
+
+> No signaling server is kept running — the SDP exchange is manual (copy/paste or QR), 
+> meaning truly zero infrastructure dependency after the page loads.
+
+---
 
 ## 🛠 Tech Stack
 
-- **Rust** — Core system logic, file chunking, and memory management.
-- **WebAssembly (WASM)** — High-performance execution sandbox within the browser.
-- **wasm-pack** — Build tool and JavaScript/Rust binding generator.
-- **HTML5 / CSS3 / JavaScript** — Frontend user interface and WebRTC API integration.
+- **Rust** — File chunking, hashing, memory-safe processing
+- **WebAssembly (WASM)** — Rust compiled to run at native speed in browser
+- **wasm-pack** — Rust → JS bindings
+- **WebRTC DataChannels** — Peer-to-peer transport layer
+- **Web Crypto API** — AES-256-GCM encryption, PBKDF2 key derivation
+- **HTML5 / CSS3 / Vanilla JS** — Frontend, no frameworks
 
-## 📄 License
+---
 
-This project is licensed under the **Apache License 2.0**. See the [LICENSE](LICENSE) file for details.
+You can use the hosted version: [rootwin-project.github.io/P2P-File-Transfer](https://rootwin-project.github.io/P2P-File-Transfer/)
+
+---
+
+## FAQ
+
+**Q: Is my file uploaded to a server?**  
+No. Files travel directly between browsers using WebRTC. No server ever sees your data.
+
+**Q: What's the file size limit?**  
+There is no hard limit — the transfer runs until complete. Practical limits depend on your 
+browser's memory and connection stability.
+
+**Q: Does it work on mobile?**  
+Yes, the UI is responsive and WebRTC is supported on modern mobile browsers.
+
+**Q: Is the connection encrypted?**  
+Yes. WebRTC itself uses DTLS-SRTP. Additionally, the app applies AES-256-GCM encryption 
+before chunking, so the data is double-encrypted in transit.
+
+**Q: Can I self-host this?**  
+Yes. It's a single HTML file + WASM. Deploy to any static host (GitHub Pages, Cloudflare Pages, Netlify).
+
+---
+
+## License
+
+[Apache License 2.0](LICENSE)
