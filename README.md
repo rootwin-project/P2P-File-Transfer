@@ -1,6 +1,8 @@
 # P2P File Transfer — Secure Browser-to-Browser File Sharing
 
 <img width="1916" height="941" alt="image" src="https://github.com/user-attachments/assets/abba3cf7-b5a9-4ee9-945b-26a0c3515f51" />
+<img width="412" height="923" alt="СКРИН ОТ ГУГЛ БОТА" src="https://github.com/user-attachments/assets/84fc6be1-48ad-447a-b58f-2f6006e0904f" />
+
 
 > Send files directly between browsers with no server, no upload, no size limit.  
 > Built with WebRTC + Rust/WebAssembly + AES-256-GCM encryption.
