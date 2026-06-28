@@ -20,3 +20,7 @@ The application is fully deployed and ready to use on GitHub Pages:
 - **WebAssembly (WASM)** — High-performance execution sandbox within the browser.
 - **wasm-pack** — Build tool and JavaScript/Rust binding generator.
 - **HTML5 / CSS3 / JavaScript** — Frontend user interface and WebRTC API integration.
+
+## 📄 License
+
+This project is licensed under the **Apache License 2.0**. See the [LICENSE](LICENSE) file for details.
