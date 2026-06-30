@@ -176,6 +176,7 @@ const i18n = {
         qrSuccess: 'QR-код успешно собран!',
         qrScanned: 'QR-код отсканирован!',
         partsCollected: 'Собрано частей: {collected} из {total}',
+        qrWrongOrder: 'Нужна часть {expected}, отсканирована часть {got}. Наведите камеру на нужную часть QR-кода.',
         etaSeconds: '{seconds} сек',
         etaMinutesSeconds: '{minutes} мин {seconds} сек',
         etaHoursMinutes: '{hours} ч {minutes} мин',
@@ -275,6 +276,7 @@ const i18n = {
         qrSuccess: 'QR code successfully assembled!',
         qrScanned: 'QR code scanned!',
         partsCollected: 'Parts collected: {collected} of {total}',
+        qrWrongOrder: 'Need part {expected}, scanned part {got}. Point the camera at the correct part of the QR code.',
         etaSeconds: '{seconds} sec',
         etaMinutesSeconds: '{minutes} min {seconds} sec',
         etaHoursMinutes: '{hours} h {minutes} min',
@@ -1270,6 +1272,16 @@ function startJsQRLoop() {
     scanRafId = requestAnimationFrame(tick);
 }
 
+function flashScanSuccess() {
+    const video = document.getElementById('scanVideo');
+    if (!video) return;
+    video.classList.remove('scan-flash');
+    // force reflow so the animation can restart if it's already running
+    void video.offsetWidth;
+    video.classList.add('scan-flash');
+    setTimeout(() => video.classList.remove('scan-flash'), 650);
+}
+
 function processScannedChunk(data) {
     const status = document.getElementById('scanStatus');
 
@@ -1281,13 +1293,34 @@ function processScannedChunk(data) {
             const payload = parts[3];
 
             totalExpectedChunks = total;
-            scannedChunks[idx] = payload;
 
             const collected = Object.keys(scannedChunks).length;
-            status.textContent = getTranslation('partsCollected', { collected: collected, total: total });
+            const nextExpectedIdx = collected + 1;
+
+            // Already have this part — ignore silently (camera re-reading the same frame)
+            if (scannedChunks[idx] !== undefined) {
+                return;
+            }
+
+            // Strict order enforcement: reject any part that isn't the next expected one
+            if (idx !== nextExpectedIdx) {
+                status.textContent = getTranslation('qrWrongOrder', { expected: nextExpectedIdx, got: idx });
+                status.style.color = 'var(--red)';
+                return;
+            }
+
+            scannedChunks[idx] = payload;
+            const newCollected = idx;
+
+            status.textContent = getTranslation('partsCollected', { collected: newCollected, total: total });
             status.style.color = 'var(--blue)';
 
-            if (collected === total) {
+            // Green glow flash every 3 successfully scanned parts
+            if (newCollected % 3 === 0) {
+                flashScanSuccess();
+            }
+
+            if (newCollected === total) {
                 let fullData = '';
                 for (let i = 1; i <= total; i++) {
                     fullData += scannedChunks[i];
@@ -1295,6 +1328,7 @@ function processScannedChunk(data) {
                 document.getElementById(scanTargetId).value = fullData;
                 status.textContent = getTranslation('qrSuccess');
                 status.style.color = 'var(--green)';
+                flashScanSuccess();
                 setTimeout(closeScanner, 800);
             }
             return;
@@ -1304,6 +1338,7 @@ function processScannedChunk(data) {
     document.getElementById(scanTargetId).value = data;
     status.textContent = getTranslation('qrScanned');
     status.style.color = 'var(--green)';
+    flashScanSuccess();
     setTimeout(closeScanner, 500);
 }
 

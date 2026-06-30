@@ -774,6 +774,22 @@ body {
   background: #000;
   aspect-ratio: 1;
   object-fit: cover;
+  transition: box-shadow 0.15s ease-out;
+  box-shadow: 0 0 0 0 rgba(34, 197, 94, 0);
+}
+#scanVideo.scan-flash {
+  animation: scanFlashGlow 0.6s ease-out;
+}
+@keyframes scanFlashGlow {
+  0% {
+    box-shadow: 0 0 0 0 rgba(34, 197, 94, 0.9), 0 0 0 0 rgba(34, 197, 94, 0.5) inset;
+  }
+  30% {
+    box-shadow: 0 0 28px 10px rgba(34, 197, 94, 0.85), 0 0 40px 14px rgba(34, 197, 94, 0.45) inset;
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(34, 197, 94, 0);
+  }
 }
 .scan-hint { font-size: 11px; color: var(--text-muted); text-align: center; }
 .scan-status { font-size: 12px; font-weight: 500; color: var(--green); min-height: 18px; }
