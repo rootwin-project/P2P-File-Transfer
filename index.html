@@ -1,10 +1,26 @@
 <!DOCTYPE html>
 <html lang="ru">
 <head>
-<link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png">
-<link rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png">
-<link rel="icon" type="image/png" sizes="16x16" href="/favicon-16x16.png">
-<link rel="manifest" href="/site.webmanifest">
+<link rel="apple-touch-icon" sizes="180x180" href="images/apple-touch-icon.png">
+<link rel="icon" type="image/png" sizes="32x32" href="images/favicon-32x32.png">
+<link rel="icon" type="image/png" sizes="16x16" href="images/favicon-16x16.png">
+<link rel="manifest" href="manifest.json">
+<!-- Open Graph -->
+<meta property="og:title" content="P2P File Transfer">
+<meta property="og:description" content="Send files of any size, browser to browser.
+No uploads. No cloud. No limits.">
+<meta property="og:image" content="https://rootwin-project.github.io/P2P-File-Transfer/images/og.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:url" content="https://rootwin-project.github.io/P2P-File-Transfer/">
+<meta property="og:type" content="website">
+
+<!-- Twitter / X -->
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="P2P File Transfer">
+<meta name="twitter:description" content="Send files of any size, browser to browser.
+No uploads. No cloud. No limits.">
+<meta name="twitter:image" content="https://rootwin-project.github.io/P2P-File-Transfer/images/og.png">
 <meta name="yandex-verification" content="8d73094087b9e80e" />
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -47,7 +63,7 @@
     <img src="images/logo.png" alt="Logo" onerror="this.style.display='none'">
   </div>
   <span class="navbar-brand" data-i18n="brand">P2P File Transfer</span>
-  <span class="navbar-tag" data-i18n="tag">END-TO-END ENCRYPTED</span>
+  <span class="navbar-tag"><span class="status-dot" id="connStatusDot"></span><span data-i18n="tag">END-TO-END ENCRYPTED</span></span>
   <div class="lang-switch">
     <button onclick="window.setLang('ru')" id="lang-ru" class="lang-btn active">RU</button>
     <button onclick="window.setLang('en')" id="lang-en" class="lang-btn">EN</button>

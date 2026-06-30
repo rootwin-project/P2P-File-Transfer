@@ -29,6 +29,62 @@ const FILE_CHUNK_SIZE = 64 * 1024;
 const SEND_BUFFER_LOW_THRESHOLD = 1024 * 1024;
 const SEND_BUFFER_HIGH_WATERMARK = 2 * 1024 * 1024;
 
+const IDB_NAME = 'p2p_transfer';
+const IDB_STORE = 'resume';
+const RESUME_SAVE_INTERVAL = 64; // save progress every N chunks
+
+function openIDB() {
+    return new Promise((resolve, reject) => {
+        const req = indexedDB.open(IDB_NAME, 1);
+        req.onupgradeneeded = (e) => {
+            e.target.result.createObjectStore(IDB_STORE);
+        };
+        req.onsuccess = (e) => resolve(e.target.result);
+        req.onerror = () => reject(req.error);
+    });
+}
+
+async function idbGet(key) {
+    const db = await openIDB();
+    return new Promise((resolve, reject) => {
+        const tx = db.transaction(IDB_STORE, 'readonly');
+        const req = tx.objectStore(IDB_STORE).get(key);
+        req.onsuccess = () => resolve(req.result ?? null);
+        req.onerror = () => reject(req.error);
+    });
+}
+
+async function idbSet(key, value) {
+    const db = await openIDB();
+    return new Promise((resolve, reject) => {
+        const tx = db.transaction(IDB_STORE, 'readwrite');
+        tx.objectStore(IDB_STORE).put(value, key);
+        tx.oncomplete = resolve;
+        tx.onerror = () => reject(tx.error);
+    });
+}
+
+async function idbDelete(key) {
+    const db = await openIDB();
+    return new Promise((resolve, reject) => {
+        const tx = db.transaction(IDB_STORE, 'readwrite');
+        tx.objectStore(IDB_STORE).delete(key);
+        tx.oncomplete = resolve;
+        tx.onerror = () => reject(tx.error);
+    });
+}
+
+// SHA-256 of first 64 KB of a File — used as a fast identity fingerprint
+async function headHash(file) {
+    const slice = await file.slice(0, FILE_CHUNK_SIZE).arrayBuffer();
+    const digest = await crypto.subtle.digest('SHA-256', slice);
+    return Array.from(new Uint8Array(digest)).map(b => b.toString(16).padStart(2, '0')).join('');
+}
+
+function resumeKey(name, size, hash) {
+    return `${name}::${size}::${hash}`;
+}
+
 const i18n = {
     ru: {
         brand: 'P2P File Transfer',
@@ -122,7 +178,12 @@ const i18n = {
         partsCollected: 'Собрано частей: {collected} из {total}',
         etaSeconds: '{seconds} сек',
         etaMinutesSeconds: '{minutes} мин {seconds} сек',
-        etaHoursMinutes: '{hours} ч {minutes} мин'
+        etaHoursMinutes: '{hours} ч {minutes} мин',
+        resumeFound: 'Найден прерванный файл. Докачать с {pct}%?',
+        resumeYes: 'Продолжить',
+        resumeNo: 'Начать заново',
+        statusResuming: 'Докачка с {pct}%...',
+        statusResumingReady: 'Получатель готов к докачке с чанка {chunk}...'
     },
     en: {
         brand: 'P2P File Transfer',
@@ -216,7 +277,12 @@ const i18n = {
         partsCollected: 'Parts collected: {collected} of {total}',
         etaSeconds: '{seconds} sec',
         etaMinutesSeconds: '{minutes} min {seconds} sec',
-        etaHoursMinutes: '{hours} h {minutes} min'
+        etaHoursMinutes: '{hours} h {minutes} min',
+        resumeFound: 'Interrupted transfer found. Resume from {pct}%?',
+        resumeYes: 'Resume',
+        resumeNo: 'Start over',
+        statusResuming: 'Resuming from {pct}%...',
+        statusResumingReady: 'Receiver ready to resume from chunk {chunk}...'
     }
 };
 
@@ -275,13 +341,26 @@ function setMode(mode) {
     document.getElementById('panel-recv').classList.toggle('active', mode === 'recv');
 }
 
+function setConnStatus(live) {
+    const dot = document.getElementById('connStatusDot');
+    if (!dot) return;
+    dot.classList.toggle('live', !!live);
+}
+
 function setStep(prefix, activeStep) {
     for (let i = 1; i <= 4; i++) {
         const stepEl = document.getElementById(`${prefix}-step${i}`);
         if (!stepEl) continue;
-        stepEl.classList.remove('active', 'done');
+        const wasActive = stepEl.classList.contains('active');
+        stepEl.classList.remove('active', 'done', 'just-activated');
         if (i < activeStep) stepEl.classList.add('done');
-        if (i === activeStep) stepEl.classList.add('active');
+        if (i === activeStep) {
+            stepEl.classList.add('active');
+            if (!wasActive) {
+                stepEl.classList.add('just-activated');
+                stepEl.addEventListener('animationend', () => stepEl.classList.remove('just-activated'), { once: true });
+            }
+        }
     }
 }
 
@@ -292,9 +371,16 @@ function showStatus(id, type, text, spinner = false) {
 }
 
 function setProgress(fillId, textId, pctId, pct, text) {
-    document.getElementById(fillId).style.width = pct + '%';
+    const fillEl = document.getElementById(fillId);
+    fillEl.style.width = pct + '%';
     document.getElementById(textId).textContent = text;
     document.getElementById(pctId).textContent = pct + '%';
+
+    const barEl = fillEl.closest('.progress-bar');
+    if (barEl) {
+        barEl.style.setProperty('--progress-pct', pct + '%');
+        barEl.style.setProperty('--progress-active', (pct > 0 && pct < 100) ? '1' : '0');
+    }
 }
 
 function resetSendProgressUI() {
@@ -383,6 +469,7 @@ function clearFile() {
 
 function resetSender(preserveStatus = false) {
     if (senderPC) { senderPC.close(); senderPC = null; }
+    setConnStatus(false);
     if (sendAckCleanup) {
         sendAckCleanup();
         sendAckCleanup = null;
@@ -397,6 +484,7 @@ function resetSender(preserveStatus = false) {
     document.getElementById('offerQRNote').textContent = '';
     document.getElementById('offerQR').innerHTML = '';
     document.getElementById('answerInput').value = '';
+    document.getElementById('answerInput').classList.remove('waiting');
     if (!preserveStatus) {
         document.getElementById('sendStatus').className = 'status-bar';
         document.getElementById('sendStatus').textContent = '';
@@ -408,6 +496,7 @@ function resetSender(preserveStatus = false) {
 
 function resetReceiver(preserveStatus = false) {
     if (receiverPC) { receiverPC.close(); receiverPC = null; }
+    setConnStatus(false);
     stopQRCycler();
     recvBuffers = [];
     recvTotal = 0;
@@ -450,24 +539,42 @@ async function createOffer() {
         channel.binaryType = 'arraybuffer';
         channel.bufferedAmountLowThreshold = SEND_BUFFER_LOW_THRESHOLD;
 
-        channel.onopen = () => {
+        channel.onopen = async () => {
             setStep('s', 4);
+            setConnStatus(true);
             showStatus('sendStatus', 'info', getTranslation('statusConnected'), true);
-            channel.send(JSON.stringify({ __meta__: true, name: selectedFile.name, size: selectedFile.size }));
+            const hash = await headHash(selectedFile);
+            channel._fileHeadHash = hash;
+            channel.send(JSON.stringify({
+                __meta__: true,
+                name: selectedFile.name,
+                size: selectedFile.size,
+                headHash: hash
+            }));
         };
 
         channel.onmessage = (e) => {
             if (e.data === '__ready_stream__') {
                 showStatus('sendStatus', 'info', getTranslation('statusReadyStream'), true);
                 document.getElementById('sendProgress').classList.add('visible');
-                sendFileChunked(channel, selectedFile, true);
+                sendFileChunked(channel, selectedFile, true, 0);
                 return;
             }
 
             if (e.data === '__ready_blob__') {
                 showStatus('sendStatus', 'info', getTranslation('statusReadyBlob'), true);
                 document.getElementById('sendProgress').classList.add('visible');
-                sendFileChunked(channel, selectedFile, false);
+                sendFileChunked(channel, selectedFile, false, 0);
+                return;
+            }
+
+            if (typeof e.data === 'string' && e.data.startsWith('__resume_from__:')) {
+                const startChunk = parseInt(e.data.split(':')[1], 10) || 0;
+                const startOffset = startChunk * FILE_CHUNK_SIZE;
+                const pct = selectedFile.size ? Math.round(startOffset / selectedFile.size * 100) : 0;
+                showStatus('sendStatus', 'info', getTranslation('statusResumingReady', { chunk: startChunk }), true);
+                document.getElementById('sendProgress').classList.add('visible');
+                sendFileChunked(channel, selectedFile, false, startChunk);
                 return;
             }
 
@@ -501,6 +608,7 @@ async function createOffer() {
         
         generateChunkedQR('offerQR', 'offerQRNote', packedKey);
         setStep('s', 3);
+        document.getElementById('answerInput').classList.add('waiting');
     } catch (e) {
         if (senderPC) { senderPC.close(); senderPC = null; }
         showStatus('sendStatus', 'error', getTranslation('errCreateKey') + e.message);
@@ -554,16 +662,16 @@ function waitForSendAck(channel) {
         channel.addEventListener('close', onClose, { once: true });
         channel.addEventListener('error', onError, { once: true });
         sendAckCleanup = cleanup;
-        // Assign resolver LAST — after listeners are set, to avoid race
         sendAckResolver = resolve;
     });
 }
 
-async function sendFileChunked(channel, file, requireAck = false) {
-    let offset = 0;
+async function sendFileChunked(channel, file, requireAck = false, startChunk = 0) {
+    let offset = startChunk * FILE_CHUNK_SIZE;
     const startTime = Date.now();
     let lastTime = startTime;
-    let lastOffset = 0;
+    let lastOffset = offset;
+    let chunkIndex = startChunk;
 
     try {
         while (offset < file.size) {
@@ -575,6 +683,7 @@ async function sendFileChunked(channel, file, requireAck = false) {
             channel.send(chunk);
             if (ackPromise) await ackPromise;
             offset += chunk.byteLength;
+            chunkIndex++;
 
             const pct = file.size ? Math.min(100, Math.round(offset / file.size * 100)) : 100;
             setProgress('progressFill', 'sendSent', 'progressPct', pct, `${getTranslation('progressSent')}${fmtSize(offset)} / ${fmtSize(file.size)}`);
@@ -591,7 +700,7 @@ async function sendFileChunked(channel, file, requireAck = false) {
                 document.getElementById('sendSpeed').textContent = fmtSpeed(speed);
             }
 
-            const avgSpeed = elapsed > 0 ? offset / elapsed : 0;
+            const avgSpeed = elapsed > 0 ? (offset - startChunk * FILE_CHUNK_SIZE) / elapsed : 0;
             const eta = avgSpeed > 0 ? (file.size - offset) / avgSpeed : Infinity;
             document.getElementById('sendETA').textContent = fmtETA(eta);
         }
@@ -619,6 +728,7 @@ async function applyAnswer() {
     }
 
     setStep('s', 4);
+    document.getElementById('answerInput').classList.remove('waiting');
     showStatus('sendStatus', 'info', getTranslation('statusApplyingAnswer'), true);
 
     let answerObj;
@@ -678,6 +788,12 @@ async function createAnswer() {
             channel.onmessage = async (ev) => {
             if (typeof ev.data === 'string') {
                 if (ev.data === '__done__') {
+                    // Clear resume record
+                    if (channel._resumeKey) {
+                        idbDelete(channel._resumeKey).catch(() => {});
+                        channel._resumeKey = null;
+                    }
+
                     // Show success UI immediately, before waiting for disk close
                     showStatus('recvStatus', 'success', getTranslation('statusFileReceived', { name: fmtName(fileName), size: fmtSize(fileSize) }));
                     setProgress('recvProgressFill', 'recvReceived', 'recvProgressPct', 100, getTranslation('progressDone'));
@@ -713,65 +829,130 @@ async function createAnswer() {
                     if (meta.__meta__) {
                         fileName = meta.name;
                         fileSize = meta.size;
+                        const hash = meta.headHash || '';
+                        const rKey = resumeKey(meta.name, meta.size, hash);
+                        channel._resumeKey = rKey;
+                        channel._recvChunkIndex = 0;
 
-                        const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
-                        if ('showSaveFilePicker' in window && !isMobile) {
-                            const btnSave = document.getElementById('btnSaveFile');
-                            if (btnSave) {
-                                btnSave.style.display = 'inline-flex';
-                                btnSave.textContent = getTranslation('btnSaveFile');
-                                btnSave.onclick = async () => {
-                                    try {
-                                        const handle = await window.showSaveFilePicker({ suggestedName: fileName });
-                                        writableStream = await handle.createWritable();
-                                        writeQueue = Promise.resolve();
-                                        btnSave.style.display = 'none';
-                                        channel.send('__ready_blob__');
-                                        setStep('r', 3);
-                                        showStatus('recvStatus', 'info', getTranslation('recvStreamStatus'), true);
-                                        document.getElementById('recvProgress').classList.add('visible');
-                                        startTime = Date.now(); lastTime = startTime; lastRecv = 0;
-                                    } catch (err) {
-                                        console.warn('Save picker canceled or failed:', err);
-                                        if (err.name === 'AbortError') {
-                                            showStatus('recvStatus', 'warning', getTranslation('saveCanceled'), false);
-                                            const fallbackLink = document.getElementById('fallback-blob-link');
-                                            if (fallbackLink) {
-                                                fallbackLink.onclick = (event) => {
-                                                    event.preventDefault();
-                                                    writableStream = null;
-                                                    btnSave.style.display = 'none';
-                                                    channel.send('__ready_blob__');
-                                                    setStep('r', 3);
-                                                    showStatus('recvStatus', 'warning', getTranslation('saveFallbackActive'), true);
-                                                    document.getElementById('recvProgress').classList.add('visible');
-                                                    startTime = Date.now(); lastTime = startTime; lastRecv = 0;
-                                                };
-                                            }
-                                        } else {
-                                            writableStream = null;
+                        let savedChunk = 0;
+                        try {
+                            const saved = await idbGet(rKey);
+                            if (saved && saved.chunkIndex > 0) {
+                                savedChunk = saved.chunkIndex;
+                            }
+                        } catch (e) { /* ignore IDB errors */ }
+
+                        const startReceiver = (resumeFromChunk) => {
+                            channel._recvChunkIndex = resumeFromChunk;
+                            recvTotal = resumeFromChunk * FILE_CHUNK_SIZE;
+
+                            const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+                            if ('showSaveFilePicker' in window && !isMobile && resumeFromChunk === 0) {
+                                const btnSave = document.getElementById('btnSaveFile');
+                                if (btnSave) {
+                                    btnSave.style.display = 'inline-flex';
+                                    btnSave.textContent = getTranslation('btnSaveFile');
+                                    btnSave.onclick = async () => {
+                                        try {
+                                            const handle = await window.showSaveFilePicker({ suggestedName: fileName });
+                                            writableStream = await handle.createWritable();
+                                            writeQueue = Promise.resolve();
                                             btnSave.style.display = 'none';
                                             channel.send('__ready_blob__');
                                             setStep('r', 3);
-                                            showStatus('recvStatus', 'warning', getTranslation('saveNotSupported'), true);
+                                            showStatus('recvStatus', 'info', getTranslation('recvStreamStatus'), true);
                                             document.getElementById('recvProgress').classList.add('visible');
                                             startTime = Date.now(); lastTime = startTime; lastRecv = 0;
+                                        } catch (err) {
+                                            console.warn('Save picker canceled or failed:', err);
+                                            if (err.name === 'AbortError') {
+                                                showStatus('recvStatus', 'warning', getTranslation('saveCanceled'), false);
+                                                const fallbackLink = document.getElementById('fallback-blob-link');
+                                                if (fallbackLink) {
+                                                    fallbackLink.onclick = (event) => {
+                                                        event.preventDefault();
+                                                        writableStream = null;
+                                                        btnSave.style.display = 'none';
+                                                        channel.send('__ready_blob__');
+                                                        setStep('r', 3);
+                                                        showStatus('recvStatus', 'warning', getTranslation('saveFallbackActive'), true);
+                                                        document.getElementById('recvProgress').classList.add('visible');
+                                                        startTime = Date.now(); lastTime = startTime; lastRecv = 0;
+                                                    };
+                                                }
+                                            } else {
+                                                writableStream = null;
+                                                btnSave.style.display = 'none';
+                                                channel.send('__ready_blob__');
+                                                setStep('r', 3);
+                                                showStatus('recvStatus', 'warning', getTranslation('saveNotSupported'), true);
+                                                document.getElementById('recvProgress').classList.add('visible');
+                                                startTime = Date.now(); lastTime = startTime; lastRecv = 0;
+                                            }
                                         }
+                                    };
+                                }
+                                showStatus('recvStatus', 'warning', getTranslation('savePrompt'), false);
+                            } else {
+                                writableStream = null;
+                                if (resumeFromChunk > 0) {
+                                    const pct = fileSize ? Math.round(resumeFromChunk * FILE_CHUNK_SIZE / fileSize * 100) : 0;
+                                    channel.send(`__resume_from__:${resumeFromChunk}`);
+                                    setStep('r', 3);
+                                    showStatus('recvStatus', 'info', getTranslation('statusResuming', { pct }), true);
+                                } else {
+                                    channel.send('__ready_blob__');
+                                    if (/Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent) || !('showSaveFilePicker' in window)) {
+                                        setStep('r', 3);
+                                        showStatus('recvStatus', 'warning', getTranslation('statusBrowserFallback'), true);
                                     }
-                                };
+                                }
+                                document.getElementById('recvProgress').classList.add('visible');
+                                startTime = Date.now(); lastTime = startTime; lastRecv = 0;
                             }
-                            showStatus('recvStatus', 'warning', getTranslation('savePrompt'), false);
+                        };
+
+                        if (savedChunk > 0) {
+                            // Offer resume via inline banner with two buttons
+                            const pct = fileSize ? Math.round(savedChunk * FILE_CHUNK_SIZE / fileSize * 100) : 0;
+                            const recvStatusEl = document.getElementById('recvStatus');
+                            recvStatusEl.className = 'status-bar visible info';
+                            recvStatusEl.innerHTML =
+                                getTranslation('resumeFound', { pct }) +
+                                ` <button onclick="this.closest('.status-bar').dataset.chose='resume'" ` +
+                                `style="margin-left:8px;padding:2px 10px;border:1px solid var(--blue);background:transparent;color:var(--blue);border-radius:6px;cursor:pointer;">` +
+                                getTranslation('resumeYes') + `</button>` +
+                                ` <button onclick="this.closest('.status-bar').dataset.chose='fresh'" ` +
+                                `style="margin-left:4px;padding:2px 10px;border:1px solid var(--text-muted);background:transparent;color:var(--text-muted);border-radius:6px;cursor:pointer;">` +
+                                getTranslation('resumeNo') + `</button>`;
+
+                            // Poll for user choice (buttons set data-chose on the element)
+                            await new Promise(resolve => {
+                                const poll = setInterval(() => {
+                                    const chose = recvStatusEl.dataset.chose;
+                                    if (chose) {
+                                        clearInterval(poll);
+                                        delete recvStatusEl.dataset.chose;
+                                        resolve(chose);
+                                    }
+                                }, 100);
+                            }).then(chose => {
+                                startReceiver(chose === 'resume' ? savedChunk : 0);
+                            });
                         } else {
-                            writableStream = null;
-                            channel.send('__ready_blob__');
-                            setStep('r', 3);
-                            showStatus('recvStatus', 'warning', getTranslation('statusBrowserFallback'), true);
-                            document.getElementById('recvProgress').classList.add('visible');
-                            startTime = Date.now(); lastTime = startTime; lastRecv = 0;
+                            startReceiver(0);
                         }
                     }
                 } catch (e) { console.error('Parse metadata error:', e); }
                 return;
+            }
+
+            // Binary chunk
+            const chunkIdx = channel._recvChunkIndex ?? 0;
+            channel._recvChunkIndex = chunkIdx + 1;
+
+            if (channel._resumeKey && (chunkIdx % RESUME_SAVE_INTERVAL === 0)) {
+                idbSet(channel._resumeKey, { chunkIndex: chunkIdx }).catch(() => {});
             }
 
             if (writableStream) {
@@ -808,6 +989,7 @@ async function createAnswer() {
 
             channel.onopen = () => {
                 setStep('r', 3);
+                setConnStatus(true);
                 showStatus('recvStatus', 'info', getTranslation('statusChannelOpen'), true);
                 document.getElementById('recvProgress').classList.add('visible');
             };
@@ -863,6 +1045,9 @@ function generateChunkedQR(containerId, noteId, dataStr) {
     const container = document.getElementById(containerId);
     const note = document.getElementById(noteId);
     container.innerHTML = '';
+    container.classList.remove('qr-pop');
+    void container.offsetWidth; // restart animation
+    container.classList.add('qr-pop');
     const prefix = containerId === 'offerQR' ? 'offer' : 'answer';
 
     if (dataStr.length <= QR_MAX_CHUNK_SIZE) {

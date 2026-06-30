@@ -63,32 +63,47 @@ body {
   border-radius: 50%;
   filter: blur(72px);
   opacity: 0.28;
-  animation: lg-drift 18s ease-in-out infinite alternate;
 }
 .lg-blob-1 {
   width: 520px; height: 520px;
   background: radial-gradient(circle, #3a7bd5 0%, #00d2ff 100%);
   top: -8%; left: -4%;
-  animation-duration: 20s;
+  animation: lg-drift-1 26s ease-in-out infinite alternate;
 }
 .lg-blob-2 {
   width: 420px; height: 420px;
   background: radial-gradient(circle, #4bd4a0 0%, #00b4d8 100%);
   bottom: -6%; right: -2%;
-  animation-duration: 24s;
+  animation: lg-drift-2 30s ease-in-out infinite alternate;
   animation-delay: -8s;
 }
 .lg-blob-3 {
   width: 340px; height: 340px;
   background: radial-gradient(circle, #6f4ef2 0%, #7fb2ff 100%);
   top: 42%; left: 55%;
-  animation-duration: 16s;
+  animation: lg-drift-3 22s ease-in-out infinite alternate;
   animation-delay: -4s;
 }
-@keyframes lg-drift {
+@keyframes lg-drift-1 {
   0%   { transform: translate(0, 0) scale(1); }
-  50%  { transform: translate(40px, -30px) scale(1.08); }
-  100% { transform: translate(-30px, 50px) scale(0.94); }
+  33%  { transform: translate(38vw, 22vh) scale(1.15); }
+  66%  { transform: translate(12vw, 48vh) scale(0.9); }
+  100% { transform: translate(30vw, 4vh) scale(1.05); }
+}
+@keyframes lg-drift-2 {
+  0%   { transform: translate(0, 0) scale(1); }
+  33%  { transform: translate(-34vw, -28vh) scale(1.12); }
+  66%  { transform: translate(-10vw, -52vh) scale(0.92); }
+  100% { transform: translate(-26vw, -8vh) scale(1.08); }
+}
+@keyframes lg-drift-3 {
+  0%   { transform: translate(0, 0) scale(1); }
+  33%  { transform: translate(-30vw, 24vh) scale(0.9); }
+  66%  { transform: translate(-44vw, -16vh) scale(1.18); }
+  100% { transform: translate(-8vw, 14vh) scale(1); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .lg-blob { animation: none; }
 }
 
 .navbar {
@@ -136,6 +151,39 @@ body {
   border-radius: 4px;
   padding: 2px 7px;
   font-family: var(--mono);
+}
+
+/* Живой индикатор статуса соединения: серый = ожидание, зелёный/пульс = активно */
+.status-dot {
+  display: inline-block;
+  width: 7px; height: 7px;
+  border-radius: 50%;
+  background: var(--text-muted);
+  margin-right: 6px;
+  vertical-align: middle;
+  position: relative;
+  transition: background 0.3s;
+}
+.status-dot::after {
+  content: '';
+  position: absolute;
+  inset: -4px;
+  border-radius: 50%;
+  border: 1.5px solid var(--green);
+  opacity: 0;
+}
+.status-dot.live {
+  background: var(--green);
+}
+.status-dot.live::after {
+  animation: status-ring 1.6s ease-out infinite;
+}
+@keyframes status-ring {
+  0%   { opacity: 0.6; transform: scale(0.6); }
+  100% { opacity: 0; transform: scale(1.8); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .status-dot.live::after { animation: none; }
 }
 
 .lang-switch {
@@ -262,10 +310,21 @@ body {
   display: flex;
   gap: 12px;
   opacity: 0.35;
-  transition: opacity 0.3s;
+  transform: translateY(0);
+  transition: opacity 0.35s ease, transform 0.35s ease;
 }
 .step.active { opacity: 1; }
 .step.done { opacity: 0.75; }
+.step.just-activated {
+  animation: step-enter 0.4s ease;
+}
+@keyframes step-enter {
+  0%   { opacity: 0.35; transform: translateY(6px); }
+  100% { opacity: 1; transform: translateY(0); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .step.just-activated { animation: none; }
+}
 
 .step-num {
   flex-shrink: 0;
@@ -381,6 +440,18 @@ body {
 .key-area::placeholder { color: var(--text-muted); }
 .key-area[readonly] { color: var(--green); cursor: text; }
 
+/* Пульсация рамки, пока ждём, что собеседник вставит/отсканирует ключ сюда */
+.key-area.waiting {
+  animation: key-waiting 1.8s ease-in-out infinite;
+}
+@keyframes key-waiting {
+  0%, 100% { border-color: var(--border); box-shadow: 0 0 0 0 rgba(127,178,255,0); }
+  50%      { border-color: var(--blue); box-shadow: 0 0 0 3px rgba(127,178,255,0.12); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .key-area.waiting { animation: none; }
+}
+
 .key-box { position: relative; }
 .copy-btn {
   position: absolute;
@@ -475,6 +546,49 @@ body {
   border-radius: 2px;
   width: 0%;
   transition: width 0.3s;
+  position: relative;
+  overflow: hidden;
+}
+/* Бегущий блик поверх залитой части — сигнал "процесс идёт" */
+.progress-fill::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(90deg, transparent 0%, rgba(255,255,255,0.45) 50%, transparent 100%);
+  width: 60px;
+  animation: progress-shimmer 1.6s linear infinite;
+}
+@keyframes progress-shimmer {
+  0%   { transform: translateX(-60px); }
+  100% { transform: translateX(calc(100% + 60px)); }
+}
+/* Пульсирующее свечение на переднем крае заливки */
+.progress-bar {
+  position: relative;
+}
+.progress-bar::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: var(--progress-pct, 0%);
+  width: 10px; height: 10px;
+  border-radius: 50%;
+  background: var(--green);
+  transform: translate(-50%, -50%);
+  box-shadow: 0 0 0 0 rgba(75,212,160,0.6);
+  animation: progress-pulse 1.4s ease-out infinite;
+  opacity: var(--progress-active, 0);
+  transition: left 0.3s;
+  pointer-events: none;
+}
+@keyframes progress-pulse {
+  0%   { box-shadow: 0 0 0 0 rgba(75,212,160,0.55); }
+  70%  { box-shadow: 0 0 0 8px rgba(75,212,160,0); }
+  100% { box-shadow: 0 0 0 0 rgba(75,212,160,0); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .progress-fill::after,
+  .progress-bar::after { animation: none; }
 }
 
 .panel { display: none; }
@@ -522,6 +636,16 @@ body {
     0 0 0 1px rgba(127, 178, 255, 0.35),
     0 12px 30px rgba(0, 0, 0, 0.22),
     0 0 24px rgba(127, 178, 255, 0.22);
+}
+.qr-wrap.qr-pop {
+  animation: qr-pop-in 0.35s cubic-bezier(0.22, 1, 0.36, 1);
+}
+@keyframes qr-pop-in {
+  0%   { opacity: 0; transform: scale(0.85); }
+  100% { opacity: 1; transform: scale(1); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .qr-wrap.qr-pop { animation: none; }
 }
 .qr-wrap canvas, .qr-wrap img {
   display: block;
