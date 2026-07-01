@@ -1230,6 +1230,9 @@ function switchTab(prefix, type, btnEl) {
     }
 }
 
+let scanTorchTrack = null;
+let scanTorchOn = false;
+
 async function openScanner(targetInputId) {
     closeScanner();
     scanTargetId = targetInputId;
@@ -1250,13 +1253,32 @@ async function openScanner(targetInputId) {
 
         await ensureJsQRLib();
 
-        scanStream = await navigator.mediaDevices.getUserMedia({ 
-            video: { facingMode: 'environment', width: { ideal: 640 }, height: { ideal: 480 } } 
-        });
-        
+        // Запрашиваем максимально доступное разрешение и непрерывный автофокус —
+        // браузер сам подберёт ближайшее, если камера не поддерживает точные значения.
+        const constraints = {
+            video: {
+                facingMode: { ideal: 'environment' },
+                width: { ideal: 1920, min: 1280 },
+                height: { ideal: 1080, min: 720 },
+                advanced: [{ focusMode: 'continuous' }]
+            }
+        };
+
+        try {
+            scanStream = await navigator.mediaDevices.getUserMedia(constraints);
+        } catch (highResErr) {
+            // Некоторые камеры/браузеры отклоняют advanced-констрейнты или min — откатываемся мягче
+            scanStream = await navigator.mediaDevices.getUserMedia({
+                video: { facingMode: 'environment', width: { ideal: 1920 }, height: { ideal: 1080 } }
+            });
+        }
+
         const video = document.getElementById('scanVideo');
         video.srcObject = scanStream;
         await video.play();
+
+        setupTorchButton();
+
         status.textContent = getTranslation('scanHint');
         startJsQRLoop();
     } catch (err) {
@@ -1267,6 +1289,33 @@ async function openScanner(targetInputId) {
         }
         status.style.color = 'var(--red)';
     }
+}
+
+function setupTorchButton() {
+    const btn = document.getElementById('scanTorchBtn');
+    if (!btn) return;
+    scanTorchTrack = null;
+    scanTorchOn = false;
+    btn.style.display = 'none';
+    btn.classList.remove('active');
+
+    const track = scanStream && scanStream.getVideoTracks()[0];
+    if (!track) return;
+    const caps = track.getCapabilities ? track.getCapabilities() : {};
+    if (caps.torch) {
+        scanTorchTrack = track;
+        btn.style.display = 'inline-flex';
+    }
+}
+
+function toggleTorch() {
+    if (!scanTorchTrack) return;
+    scanTorchOn = !scanTorchOn;
+    scanTorchTrack.applyConstraints({ advanced: [{ torch: scanTorchOn }] }).catch(() => {
+        scanTorchOn = !scanTorchOn; // revert on failure
+    });
+    const btn = document.getElementById('scanTorchBtn');
+    if (btn) btn.classList.toggle('active', scanTorchOn);
 }
 
 function startJsQRLoop() {
@@ -1288,8 +1337,14 @@ function startJsQRLoop() {
                 }
             }
 
-            const w = Math.min(video.videoWidth || 640, 960);
-            const h = Math.round(w * ((video.videoHeight || 480) / (video.videoWidth || 640)));
+            // Берём кадр в максимальном доступном разрешении — так jsQR видит больше деталей
+            // и лучше декодирует QR издалека или при плохом освещении. Ограничиваем только
+            // очень большие кадры (>1600px), чтобы не проседала частота кадров.
+            const rawW = video.videoWidth || 1280;
+            const rawH = video.videoHeight || 720;
+            const scale = rawW > 1600 ? 1600 / rawW : 1;
+            const w = Math.round(rawW * scale);
+            const h = Math.round(rawH * scale);
             canvas.width = w; canvas.height = h;
             ctx.drawImage(video, 0, 0, w, h);
             const imageData = ctx.getImageData(0, 0, w, h);
@@ -1381,6 +1436,13 @@ function closeScanner() {
         scanStream = null;
     }
     scanDetector = null;
+    scanTorchTrack = null;
+    scanTorchOn = false;
+    const torchBtn = document.getElementById('scanTorchBtn');
+    if (torchBtn) {
+        torchBtn.style.display = 'none';
+        torchBtn.classList.remove('active');
+    }
     document.getElementById('scanVideo').srcObject = null;
     document.getElementById('scanModal').classList.remove('visible');
 }
@@ -1417,5 +1479,6 @@ window.copyText = copyText;
 window.switchTab = switchTab;
 window.openScanner = openScanner;
 window.closeScanner = closeScanner;
+window.toggleTorch = toggleTorch;
 window.createAnswer = createAnswer;
 window.fmtSize = fmtSize;

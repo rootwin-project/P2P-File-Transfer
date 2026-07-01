@@ -284,13 +284,17 @@
   </div>
 </div>
 
+<style>#scanTorchBtn.active{background:rgba(255,196,0,0.9);color:#111;}</style>
 <div class="modal-overlay" id="scanModal">
   <div class="modal">
     <div class="modal-title">
       <span data-i18n="modalTitle">📷 Сканировать QR-код</span>
       <button class="modal-close" onclick="window.closeScanner()">✕</button>
     </div>
-    <video id="scanVideo" autoplay playsinline muted></video>
+    <div style="position:relative;">
+      <video id="scanVideo" autoplay playsinline muted></video>
+      <button id="scanTorchBtn" onclick="window.toggleTorch()" style="display:none;position:absolute;bottom:10px;right:10px;width:40px;height:40px;border-radius:50%;border:none;background:rgba(0,0,0,0.55);color:#fff;font-size:18px;align-items:center;justify-content:center;cursor:pointer;z-index:2;transition:background .2s;">💡</button>
+    </div>
     <canvas id="scanCanvas" style="display:none"></canvas>
     <div class="scan-status" id="scanStatus"></div>
     <p class="scan-hint" data-i18n="scanHint">Наведите камеру на QR-код</p>
