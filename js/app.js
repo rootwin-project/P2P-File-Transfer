@@ -3,6 +3,28 @@ let pack_key = null;
 let unpack_key = null;
 let cryptoLoadPromise = null;
 
+// Ленивая загрузка сторонних <script> по требованию (не блокируют первую отрисовку страницы)
+const scriptLoadPromises = {};
+function loadScript(src) {
+    if (scriptLoadPromises[src]) return scriptLoadPromises[src];
+    scriptLoadPromises[src] = new Promise((resolve, reject) => {
+        const s = document.createElement('script');
+        s.src = src;
+        s.onload = () => resolve();
+        s.onerror = () => reject(new Error('Не удалось загрузить ' + src));
+        document.head.appendChild(s);
+    });
+    return scriptLoadPromises[src];
+}
+
+function ensureQRCodeLib() {
+    return loadScript('https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js');
+}
+
+function ensureJsQRLib() {
+    return loadScript('https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js');
+}
+
 let currentLang = 'ru';
 let currentMode = 'send';
 let selectedFile = null;
@@ -1042,11 +1064,19 @@ function stopQRCycler() {
     if (answerControls) answerControls.remove();
 }
 
-function generateChunkedQR(containerId, noteId, dataStr) {
+async function generateChunkedQR(containerId, noteId, dataStr) {
     stopQRCycler();
     const container = document.getElementById(containerId);
     const note = document.getElementById(noteId);
     container.innerHTML = '';
+
+    try {
+        await ensureQRCodeLib();
+    } catch (e) {
+        container.innerHTML = '<p style="color:var(--red);padding:12px;">Ошибка загрузки библиотеки QR</p>';
+        return;
+    }
+
     container.classList.remove('qr-pop');
     void container.offsetWidth; // restart animation
     container.classList.add('qr-pop');
@@ -1217,6 +1247,8 @@ async function openScanner(targetInputId) {
         if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
             throw new Error(getTranslation('cameraNotSupported'));
         }
+
+        await ensureJsQRLib();
 
         scanStream = await navigator.mediaDevices.getUserMedia({ 
             video: { facingMode: 'environment', width: { ideal: 640 }, height: { ideal: 480 } } 
