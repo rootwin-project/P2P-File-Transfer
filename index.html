@@ -1,35 +1,70 @@
 <!DOCTYPE html>
 <html lang="ru">
 <head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+<!-- Primary SEO -->
+<title>P2P File Transfer — передача файлов между браузерами без облака</title>
+<meta name="description" content="Отправляйте файлы любого размера напрямую между браузерами через P2P и WebRTC с шифрованием AES-256. Без загрузки в облако, без лимитов и регистрации — быстро, приватно, бесплатно.">
+<meta name="keywords" content="p2p передача файлов, отправить файл без облака, webrtc file transfer, обмен файлами между браузерами, зашифрованная передача файлов, peer to peer файлообменник, отправить большой файл онлайн">
+<meta name="author" content="rootwin-project">
+<meta name="robots" content="index, follow, max-image-preview:large">
+<link rel="canonical" href="https://rootwin-project.github.io/P2P-File-Transfer/">
+
 <link rel="apple-touch-icon" sizes="180x180" href="images/apple-touch-icon.png">
 <link rel="icon" type="image/png" sizes="32x32" href="images/favicon-32x32.png">
 <link rel="icon" type="image/png" sizes="16x16" href="images/favicon-16x16.png">
 <link rel="manifest" href="manifest.json">
+
 <!-- Open Graph -->
-<meta property="og:title" content="P2P File Transfer">
-<meta property="og:description" content="Send files of any size, browser to browser.
-No uploads. No cloud. No limits.">
+<meta property="og:title" content="P2P File Transfer — файлы напрямую между браузерами, без облака">
+<meta property="og:description" content="Передавайте файлы любого размера peer-to-peer через WebRTC с AES-256 шифрованием. Без загрузки на сервер, без лимитов, без регистрации.">
 <meta property="og:image" content="https://rootwin-project.github.io/P2P-File-Transfer/images/og.png">
 <meta property="og:image:width" content="1200">
 <meta property="og:image:height" content="630">
 <meta property="og:url" content="https://rootwin-project.github.io/P2P-File-Transfer/">
 <meta property="og:type" content="website">
+<meta property="og:site_name" content="P2P File Transfer">
+<meta property="og:locale" content="ru_RU">
 
 <!-- Twitter / X -->
 <meta name="twitter:card" content="summary_large_image">
-<meta name="twitter:title" content="P2P File Transfer">
-<meta name="twitter:description" content="Send files of any size, browser to browser.
-No uploads. No cloud. No limits.">
+<meta name="twitter:title" content="P2P File Transfer — файлы напрямую между браузерами, без облака">
+<meta name="twitter:description" content="Передавайте файлы любого размера peer-to-peer через WebRTC с AES-256 шифрованием. Без загрузки на сервер, без лимитов, без регистрации.">
 <meta name="twitter:image" content="https://rootwin-project.github.io/P2P-File-Transfer/images/og.png">
 <meta name="yandex-verification" content="8d73094087b9e80e" />
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>P2P File Transfer</title>
+
+<!-- Structured data for rich results -->
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "WebApplication",
+  "name": "P2P File Transfer",
+  "url": "https://rootwin-project.github.io/P2P-File-Transfer/",
+  "description": "Браузерное приложение для прямой P2P-передачи файлов через WebRTC с шифрованием AES-256-GCM. Без облака, без ограничений по размеру, без регистрации.",
+  "applicationCategory": "UtilitiesApplication",
+  "operatingSystem": "Any (works in modern browsers)",
+  "offers": {
+    "@type": "Offer",
+    "price": "0",
+    "priceCurrency": "USD"
+  }
+}
+</script>
+
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
-<script src="https://cdnjs.cloudflare.com/ajax/libs/pako/2.1.0/pako.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js"></script>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="css/style.css">
+<link rel="preload" as="style" href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" onload="this.onload=null;this.rel='stylesheet'">
+<noscript><link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet"></noscript>
+<!--
+  pako.min.js убран: не используется ни в одном месте app.js.
+  qrcode.min.js и jsQR.min.js больше не грузятся тут синхронно —
+  они подгружаются лениво из js/app.js только в момент реального
+  использования (открытие вкладки QR / открытие сканера камеры),
+  поэтому больше не блокируют первую отрисовку страницы.
+-->
 <script async src="https://www.googletagmanager.com/gtag/js?id=G-9VL85XEBE0"></script>
 <script>
   window.dataLayer = window.dataLayer || [];
@@ -37,7 +72,6 @@ No uploads. No cloud. No limits.">
   gtag('js', new Date());
   gtag('config', 'G-9VL85XEBE0');
 </script>
-<link rel="stylesheet" href="css/style.css">
 </head>
 <body>
 
@@ -169,6 +203,14 @@ No uploads. No cloud. No limits.">
               <div class="eta-chip"><span data-i18n="speed">Скорость:</span>&nbsp;<strong id="sendSpeed">—</strong></div>
               <div class="eta-chip"><span data-i18n="sent">Передано:</span>&nbsp;<strong id="sendSent">—</strong></div>
             </div>
+            <div id="sendTransferControls" style="display:flex;gap:8px;margin-top:12px;">
+              <button type="button" id="btnPauseSend" onclick="window.togglePauseSend()" data-i18n="btnPause"
+                style="flex:1;padding:8px 12px;border:1px solid var(--blue);background:transparent;color:var(--blue);border-radius:8px;cursor:pointer;font-size:13px;font-weight:600;">⏸ Пауза</button>
+              <button type="button" id="btnCancelSend" onclick="window.cancelSend()" data-i18n="btnCancel"
+                style="flex:1;padding:8px 12px;border:1px solid var(--red);background:transparent;color:var(--red);border-radius:8px;cursor:pointer;font-size:13px;font-weight:600;">✕ Отменить</button>
+            </div>
+            <p id="sendKeepOpenHint" data-i18n="keepTabOpen" style="margin-top:8px;font-size:11px;color:var(--text-muted);text-align:center;">⚠️ Не закрывайте и не перезагружайте эту вкладку во время передачи файла</p>
+            <p id="sendStallWarning" style="display:none;margin-top:6px;font-size:12px;color:var(--orange);text-align:center;"></p>
           </div>
         </div>
       </div>
@@ -242,6 +284,14 @@ No uploads. No cloud. No limits.">
               <div class="eta-chip"><span data-i18n="speed">Скорость:</span>&nbsp;<strong id="recvSpeed">—</strong></div>
               <div class="eta-chip"><span data-i18n="received">Получено:</span>&nbsp;<strong id="recvReceived">—</strong></div>
             </div>
+            <div id="recvTransferControls" style="display:flex;gap:8px;margin-top:12px;">
+              <button type="button" id="btnPauseRecv" onclick="window.togglePauseRecv()" data-i18n="btnPause"
+                style="flex:1;padding:8px 12px;border:1px solid var(--blue);background:transparent;color:var(--blue);border-radius:8px;cursor:pointer;font-size:13px;font-weight:600;">⏸ Пауза</button>
+              <button type="button" id="btnCancelRecv" onclick="window.cancelRecv()" data-i18n="btnCancel"
+                style="flex:1;padding:8px 12px;border:1px solid var(--red);background:transparent;color:var(--red);border-radius:8px;cursor:pointer;font-size:13px;font-weight:600;">✕ Отменить</button>
+            </div>
+            <p id="recvKeepOpenHint" data-i18n="keepTabOpen" style="margin-top:8px;font-size:11px;color:var(--text-muted);text-align:center;">⚠️ Не закрывайте и не перезагружайте эту вкладку во время передачи файла</p>
+            <p id="recvStallWarning" style="display:none;margin-top:6px;font-size:12px;color:var(--orange);text-align:center;"></p>
           </div>
         </div>
       </div>
@@ -256,7 +306,10 @@ No uploads. No cloud. No limits.">
       <span data-i18n="modalTitle">📷 Сканировать QR-код</span>
       <button class="modal-close" onclick="window.closeScanner()">✕</button>
     </div>
-    <video id="scanVideo" autoplay playsinline muted></video>
+    <div class="scan-video-wrap">
+      <video id="scanVideo" autoplay playsinline muted></video>
+      <button id="scanTorchBtn" class="torch-btn" onclick="window.toggleTorch()">💡</button>
+    </div>
     <canvas id="scanCanvas" style="display:none"></canvas>
     <div class="scan-status" id="scanStatus"></div>
     <p class="scan-hint" data-i18n="scanHint">Наведите камеру на QR-код</p>
@@ -308,11 +361,13 @@ No uploads. No cloud. No limits.">
 <footer class="footer">
   <div class="footer-dev">DEVELOPED BY <a href="https://t.me/ROOTWIN_PROJECT" target="_blank" rel="noopener noreferrer">ROOTWIN PROJECT</a></div>
   <div class="footer-info">
-    <span>WEBRTC</span>
-    <span class="footer-dot"></span>
-    <span>AES-256</span>
-    <span class="footer-dot"></span>
-    <span>NO SERVER</span>
+    <a href="https://github.com/rootwin-project/P2P-File-Transfer" target="_blank" rel="noopener noreferrer"
+       style="display:inline-flex;align-items:center;gap:6px;padding:4px 12px;border:1px solid var(--text-muted);border-radius:20px;color:var(--text-muted);text-decoration:none;font-size:11px;letter-spacing:0.5px;transition:border-color .2s,color .2s;"
+       onmouseover="this.style.borderColor='var(--blue)';this.style.color='var(--blue)';"
+       onmouseout="this.style.borderColor='var(--text-muted)';this.style.color='var(--text-muted)';">
+      <svg width="13" height="13" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8Z"/></svg>
+      <span>Source</span>
+    </a>
   </div>
 </footer>
 

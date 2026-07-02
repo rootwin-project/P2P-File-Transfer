@@ -7,6 +7,8 @@ use base64::{Engine as _, engine::general_purpose::STANDARD as BASE64};
 use getrandom::getrandom;
 use serde::{Serialize, Deserialize};
 
+const APP_PEPPER: &[u8] = b"F1abD$29A";
+
 #[derive(Serialize, Deserialize)]
 struct Packet {
     e: String,
@@ -25,8 +27,15 @@ fn gen_password() -> String {
 }
 
 fn derive_key(password: &str, salt: &[u8]) -> [u8; 32] {
+    // Эффективная соль = случайная соль из пакета + статичный pepper приложения.
+    // Без знания APP_PEPPER восстановить ключ по перехваченному пакету
+    // (даже если пароль и случайная соль известны) невозможно.
+    let mut effective_salt = Vec::with_capacity(salt.len() + APP_PEPPER.len());
+    effective_salt.extend_from_slice(salt);
+    effective_salt.extend_from_slice(APP_PEPPER);
+
     let mut key = [0u8; 32];
-    pbkdf2_hmac::<Sha256>(password.as_bytes(), salt, 100_000, &mut key);
+    pbkdf2_hmac::<Sha256>(password.as_bytes(), &effective_salt, 100_000, &mut key);
     key
 }
 

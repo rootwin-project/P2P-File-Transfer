@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://rootwin-project.github.io/P2P-File-Transfer/sitemap.xml

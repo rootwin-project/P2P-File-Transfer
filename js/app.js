@@ -3,6 +3,28 @@ let pack_key = null;
 let unpack_key = null;
 let cryptoLoadPromise = null;
 
+// Ленивая загрузка сторонних <script> по требованию (не блокируют первую отрисовку страницы)
+const scriptLoadPromises = {};
+function loadScript(src) {
+    if (scriptLoadPromises[src]) return scriptLoadPromises[src];
+    scriptLoadPromises[src] = new Promise((resolve, reject) => {
+        const s = document.createElement('script');
+        s.src = src;
+        s.onload = () => resolve();
+        s.onerror = () => reject(new Error('Не удалось загрузить ' + src));
+        document.head.appendChild(s);
+    });
+    return scriptLoadPromises[src];
+}
+
+function ensureQRCodeLib() {
+    return loadScript('https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js');
+}
+
+function ensureJsQRLib() {
+    return loadScript('https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js');
+}
+
 let currentLang = 'ru';
 let currentMode = 'send';
 let selectedFile = null;
@@ -24,6 +46,24 @@ let sendAckCleanup = null;
 
 let qrCyclerInterval = null;
 let scanDetector = null;
+
+// --- Pause / cancel / stall-watch / keep-tab-open state ---
+let sendTransferChannel = null;
+let sendPaused = false;
+let sendPauseWaiters = [];
+let sendCancelled = false;
+let sendTransferActive = false;
+let sendLastProgressTs = 0;
+let sendStallInterval = null;
+
+let recvChannel = null;
+let recvPaused = false;
+let recvCancelled = false;
+let recvTransferActive = false;
+let recvLastProgressTs = 0;
+let recvStallInterval = null;
+
+const STALL_TIMEOUT_MS = 20000; // no progress for this long -> show a warning
 
 const FILE_CHUNK_SIZE = 64 * 1024;
 const SEND_BUFFER_LOW_THRESHOLD = 1024 * 1024;
@@ -176,6 +216,7 @@ const i18n = {
         qrSuccess: 'QR-код успешно собран!',
         qrScanned: 'QR-код отсканирован!',
         partsCollected: 'Собрано частей: {collected} из {total}',
+        qrWrongOrder: 'Нужна часть {expected}, отсканирована часть {got}. Наведите камеру на нужную часть QR-кода.',
         etaSeconds: '{seconds} сек',
         etaMinutesSeconds: '{minutes} мин {seconds} сек',
         etaHoursMinutes: '{hours} ч {minutes} мин',
@@ -183,7 +224,20 @@ const i18n = {
         resumeYes: 'Продолжить',
         resumeNo: 'Начать заново',
         statusResuming: 'Докачка с {pct}%...',
-        statusResumingReady: 'Получатель готов к докачке с чанка {chunk}...'
+        statusResumingReady: 'Получатель готов к докачке с чанка {chunk}...',
+        btnPause: '⏸ Пауза',
+        btnResume: '▶ Продолжить',
+        btnCancel: '✕ Отменить',
+        btnReload: '🔄 Перезагрузить страницу',
+        keepTabOpen: '⚠️ Не закрывайте и не перезагружайте эту вкладку во время передачи файла',
+        statusPaused: 'Передача приостановлена',
+        statusPausedByPeer: 'Собеседник приостановил передачу',
+        statusResumedByPeer: 'Собеседник возобновил передачу',
+        statusCancelled: 'Передача отменена',
+        statusCancelledByPeer: 'Собеседник отменил передачу',
+        stallWarning: '⏳ Долго нет прогресса. Возможно, соединение оборвано или собеседник закрыл вкладку браузера.',
+        errConnectionLost: 'Соединение потеряно. Возможно, собеседник закрыл вкладку браузера или пропала связь.',
+        footerSource: 'Исходный код'
     },
     en: {
         brand: 'P2P File Transfer',
@@ -275,6 +329,7 @@ const i18n = {
         qrSuccess: 'QR code successfully assembled!',
         qrScanned: 'QR code scanned!',
         partsCollected: 'Parts collected: {collected} of {total}',
+        qrWrongOrder: 'Need part {expected}, scanned part {got}. Point the camera at the correct part of the QR code.',
         etaSeconds: '{seconds} sec',
         etaMinutesSeconds: '{minutes} min {seconds} sec',
         etaHoursMinutes: '{hours} h {minutes} min',
@@ -282,7 +337,20 @@ const i18n = {
         resumeYes: 'Resume',
         resumeNo: 'Start over',
         statusResuming: 'Resuming from {pct}%...',
-        statusResumingReady: 'Receiver ready to resume from chunk {chunk}...'
+        statusResumingReady: 'Receiver ready to resume from chunk {chunk}...',
+        btnPause: '⏸ Pause',
+        btnResume: '▶ Resume',
+        btnCancel: '✕ Cancel',
+        btnReload: '🔄 Reload page',
+        keepTabOpen: '⚠️ Do not close or reload this tab while the transfer is in progress',
+        statusPaused: 'Transfer paused',
+        statusPausedByPeer: 'The other side paused the transfer',
+        statusResumedByPeer: 'The other side resumed the transfer',
+        statusCancelled: 'Transfer canceled',
+        statusCancelledByPeer: 'The other side canceled the transfer',
+        stallWarning: '⏳ No progress for a while. The connection may be broken, or the other side may have left the tab.',
+        errConnectionLost: 'Connection lost. The other side may have closed the tab, or the connection dropped.',
+        footerSource: 'Source'
     }
 };
 
@@ -383,6 +451,137 @@ function setProgress(fillId, textId, pctId, pct, text) {
     }
 }
 
+function showStatusWithReload(id, text) {
+    const el = document.getElementById(id);
+    el.className = 'status-bar visible error';
+    el.innerHTML = text +
+        ` <button onclick="location.reload()" style="margin-left:8px;padding:2px 10px;border:1px solid var(--red);background:transparent;color:var(--red);border-radius:6px;cursor:pointer;">` +
+        getTranslation('btnReload') + `</button>`;
+}
+
+function setPauseButtonState(btnId, paused) {
+    const btn = document.getElementById(btnId);
+    if (!btn) return;
+    const key = paused ? 'btnResume' : 'btnPause';
+    btn.setAttribute('data-i18n', key);
+    btn.textContent = getTranslation(key);
+}
+
+// --- Sender-side pause / cancel ---
+function waitIfSendPaused() {
+    return new Promise(resolve => {
+        if (!sendPaused) return resolve();
+        sendPauseWaiters.push(resolve);
+    });
+}
+
+function setSendPausedState(paused, notifyPeer = true, statusText = null) {
+    sendPaused = paused;
+    if (!paused) {
+        sendPauseWaiters.forEach(r => r());
+        sendPauseWaiters = [];
+    }
+    setPauseButtonState('btnPauseSend', paused);
+    if (statusText) {
+        showStatus('sendStatus', paused ? 'warning' : 'info', statusText, !paused);
+    } else if (paused) {
+        showStatus('sendStatus', 'warning', getTranslation('statusPaused'), false);
+    }
+    if (notifyPeer && sendTransferChannel && sendTransferChannel.readyState === 'open') {
+        try { sendTransferChannel.send(paused ? '__pause__' : '__resume__'); } catch (e) { /* ignore */ }
+    }
+}
+
+function togglePauseSend() {
+    if (!sendTransferChannel || sendCancelled) return;
+    setSendPausedState(!sendPaused);
+}
+
+function cancelSend() {
+    if (!sendTransferChannel && !sendTransferActive) return;
+    sendCancelled = true;
+    setSendPausedState(false, false); // wake up any paused loop so it can exit
+    if (sendTransferChannel && sendTransferChannel.readyState === 'open') {
+        try { sendTransferChannel.send('__cancel__'); } catch (e) { /* ignore */ }
+    }
+    stopSendStallWatch();
+    sendTransferActive = false;
+    showStatus('sendStatus', 'warning', getTranslation('statusCancelled'), false);
+    setTimeout(() => resetSender(true), 1200);
+}
+
+function startSendStallWatch() {
+    stopSendStallWatch();
+    sendLastProgressTs = Date.now();
+    sendStallInterval = setInterval(() => {
+        const el = document.getElementById('sendStallWarning');
+        if (!el) return;
+        if (sendPaused || sendCancelled) { el.style.display = 'none'; return; }
+        if (Date.now() - sendLastProgressTs > STALL_TIMEOUT_MS) {
+            el.textContent = getTranslation('stallWarning');
+            el.style.display = 'block';
+        } else {
+            el.style.display = 'none';
+        }
+    }, 3000);
+}
+
+function stopSendStallWatch() {
+    if (sendStallInterval) { clearInterval(sendStallInterval); sendStallInterval = null; }
+    const el = document.getElementById('sendStallWarning');
+    if (el) el.style.display = 'none';
+}
+
+// --- Receiver-side pause / cancel ---
+function togglePauseRecv() {
+    if (!recvChannel || recvCancelled) return;
+    recvPaused = !recvPaused;
+    setPauseButtonState('btnPauseRecv', recvPaused);
+    if (recvChannel.readyState === 'open') {
+        try { recvChannel.send(recvPaused ? '__pause__' : '__resume__'); } catch (e) { /* ignore */ }
+    }
+    showStatus('recvStatus', recvPaused ? 'warning' : 'info', getTranslation(recvPaused ? 'statusPaused' : 'statusChannelOpen'), !recvPaused);
+}
+
+function cancelRecv() {
+    if (!recvChannel && !recvTransferActive) return;
+    recvCancelled = true;
+    if (recvChannel && recvChannel.readyState === 'open') {
+        try { recvChannel.send('__cancel__'); } catch (e) { /* ignore */ }
+    }
+    stopRecvStallWatch();
+    recvTransferActive = false;
+    showStatus('recvStatus', 'warning', getTranslation('statusCancelled'), false);
+    if (writableStream) {
+        const ws = writableStream;
+        writableStream = null;
+        writeQueue.then(async () => { try { await ws.abort(); } catch (e) { /* ignore */ } });
+    }
+    setTimeout(() => resetReceiver(true), 1200);
+}
+
+function startRecvStallWatch() {
+    stopRecvStallWatch();
+    recvLastProgressTs = Date.now();
+    recvStallInterval = setInterval(() => {
+        const el = document.getElementById('recvStallWarning');
+        if (!el) return;
+        if (recvPaused || recvCancelled) { el.style.display = 'none'; return; }
+        if (Date.now() - recvLastProgressTs > STALL_TIMEOUT_MS) {
+            el.textContent = getTranslation('stallWarning');
+            el.style.display = 'block';
+        } else {
+            el.style.display = 'none';
+        }
+    }, 3000);
+}
+
+function stopRecvStallWatch() {
+    if (recvStallInterval) { clearInterval(recvStallInterval); recvStallInterval = null; }
+    const el = document.getElementById('recvStallWarning');
+    if (el) el.style.display = 'none';
+}
+
 function resetSendProgressUI() {
     document.getElementById('progressFill').style.width = '0%';
     document.getElementById('progressText').textContent = '—';
@@ -475,6 +674,15 @@ function resetSender(preserveStatus = false) {
         sendAckCleanup = null;
     }
     sendAckResolver = null;
+    sendTransferChannel = null;
+    sendPaused = false;
+    sendPauseWaiters = [];
+    sendCancelled = false;
+    sendTransferActive = false;
+    stopSendStallWatch();
+    setPauseButtonState('btnPauseSend', false);
+    const sendControls = document.getElementById('sendTransferControls');
+    if (sendControls) sendControls.style.display = 'flex';
     stopQRCycler();
     clearFile();
     document.getElementById('btnCreateOffer').textContent = getTranslation('btnCreate');
@@ -503,6 +711,14 @@ function resetReceiver(preserveStatus = false) {
     writableStream = null;
     writeQueue = Promise.resolve();
     scanTargetId = null;
+    recvChannel = null;
+    recvPaused = false;
+    recvCancelled = false;
+    recvTransferActive = false;
+    stopRecvStallWatch();
+    setPauseButtonState('btnPauseRecv', false);
+    const recvControls = document.getElementById('recvTransferControls');
+    if (recvControls) recvControls.style.display = 'flex';
     
     document.getElementById('offerInput').value = '';
     document.getElementById('answerKey').value = '';
@@ -525,7 +741,7 @@ function resetReceiver(preserveStatus = false) {
 async function createOffer() {
     if (!selectedFile) return;
     if (!await ensureCrypto()) {
-        showStatus('sendStatus', 'error', getTranslation('errCrypto'));
+        showStatusWithReload('sendStatus', getTranslation('errCrypto'));
         return;
     }
     
@@ -538,11 +754,24 @@ async function createOffer() {
         const channel = senderPC.createDataChannel('fileTransfer', { ordered: true });
         channel.binaryType = 'arraybuffer';
         channel.bufferedAmountLowThreshold = SEND_BUFFER_LOW_THRESHOLD;
+        sendTransferChannel = channel;
+        sendPaused = false;
+        sendPauseWaiters = [];
+        sendCancelled = false;
+
+        senderPC.onconnectionstatechange = () => {
+            if (['disconnected', 'failed', 'closed'].includes(senderPC.connectionState) && sendTransferActive) {
+                sendTransferActive = false;
+                stopSendStallWatch();
+                showStatusWithReload('sendStatus', getTranslation('errConnectionLost'));
+            }
+        };
 
         channel.onopen = async () => {
             setStep('s', 4);
             setConnStatus(true);
             showStatus('sendStatus', 'info', getTranslation('statusConnected'), true);
+            document.getElementById('sendProgress').classList.add('visible');
             const hash = await headHash(selectedFile);
             channel._fileHeadHash = hash;
             channel.send(JSON.stringify({
@@ -554,6 +783,24 @@ async function createOffer() {
         };
 
         channel.onmessage = (e) => {
+            if (e.data === '__pause__') {
+                setSendPausedState(true, false, getTranslation('statusPausedByPeer'));
+                return;
+            }
+            if (e.data === '__resume__') {
+                setSendPausedState(false, false, getTranslation('statusResumedByPeer'));
+                return;
+            }
+            if (e.data === '__cancel__') {
+                sendCancelled = true;
+                setSendPausedState(false, false);
+                stopSendStallWatch();
+                sendTransferActive = false;
+                showStatus('sendStatus', 'warning', getTranslation('statusCancelledByPeer'), false);
+                setTimeout(() => resetSender(true), 1200);
+                return;
+            }
+
             if (e.data === '__ready_stream__') {
                 showStatus('sendStatus', 'info', getTranslation('statusReadyStream'), true);
                 document.getElementById('sendProgress').classList.add('visible');
@@ -611,7 +858,7 @@ async function createOffer() {
         document.getElementById('answerInput').classList.add('waiting');
     } catch (e) {
         if (senderPC) { senderPC.close(); senderPC = null; }
-        showStatus('sendStatus', 'error', getTranslation('errCreateKey') + e.message);
+        showStatusWithReload('sendStatus', getTranslation('errCreateKey') + e.message);
         btn.innerHTML = defaultLabel;
         btn.disabled = !selectedFile;
     }
@@ -673,8 +920,15 @@ async function sendFileChunked(channel, file, requireAck = false, startChunk = 0
     let lastOffset = offset;
     let chunkIndex = startChunk;
 
+    sendTransferActive = true;
+    startSendStallWatch();
+
     try {
         while (offset < file.size) {
+            if (sendCancelled) throw new Error('__CANCELLED__');
+            await waitIfSendPaused();
+            if (sendCancelled) throw new Error('__CANCELLED__');
+
             await waitForSendBuffer(channel);
             if (channel.readyState !== 'open') throw new Error(getTranslation('errCancelBuffer'));
 
@@ -684,6 +938,7 @@ async function sendFileChunked(channel, file, requireAck = false, startChunk = 0
             if (ackPromise) await ackPromise;
             offset += chunk.byteLength;
             chunkIndex++;
+            sendLastProgressTs = Date.now();
 
             const pct = file.size ? Math.min(100, Math.round(offset / file.size * 100)) : 100;
             setProgress('progressFill', 'sendSent', 'progressPct', pct, `${getTranslation('progressSent')}${fmtSize(offset)} / ${fmtSize(file.size)}`);
@@ -708,6 +963,10 @@ async function sendFileChunked(channel, file, requireAck = false, startChunk = 0
         await waitForSendBuffer(channel);
         if (channel.readyState === 'open') {
             channel.send('__done__');
+            sendTransferActive = false;
+            stopSendStallWatch();
+            const sendControls = document.getElementById('sendTransferControls');
+            if (sendControls) sendControls.style.display = 'none';
             showStatus('sendStatus', 'success', getTranslation('statusSentOk'));
             setProgress('progressFill', 'sendSent', 'progressPct', 100, getTranslation('progressDone'));
             document.getElementById('sendETA').textContent = getTranslation('progressEtaDone');
@@ -715,7 +974,13 @@ async function sendFileChunked(channel, file, requireAck = false, startChunk = 0
             setTimeout(() => resetSender(true), 2000);
         }
     } catch (e) {
-        showStatus('sendStatus', 'error', getTranslation('errTransfer') + e.message);
+        sendTransferActive = false;
+        stopSendStallWatch();
+        if (e.message === '__CANCELLED__' || sendCancelled) {
+            // Cancellation already shows its own status message via cancelSend()/peer handler
+            return;
+        }
+        showStatusWithReload('sendStatus', getTranslation('errTransfer') + e.message);
     }
 }
 
@@ -723,7 +988,7 @@ async function applyAnswer() {
     const rawKey = document.getElementById('answerInput').value.trim();
     if (!rawKey) return;
     if (!await ensureCrypto()) {
-        showStatus('sendStatus', 'error', getTranslation('errCrypto'));
+        showStatusWithReload('sendStatus', getTranslation('errCrypto'));
         return;
     }
 
@@ -739,14 +1004,14 @@ async function applyAnswer() {
         try {
             answerObj = JSON.parse(rawKey);
         } catch {
-            return showStatus('sendStatus', 'error', getTranslation('errBadAnswerKey'));
+            return showStatusWithReload('sendStatus', getTranslation('errBadAnswerKey'));
         }
     }
 
     try {
         await senderPC.setRemoteDescription(new RTCSessionDescription(answerObj));
     } catch (e) {
-        showStatus('sendStatus', 'error', getTranslation('errConnect') + e.message);
+        showStatusWithReload('sendStatus', getTranslation('errConnect') + e.message);
     }
 }
 
@@ -754,7 +1019,7 @@ async function createAnswer() {
     const rawKey = document.getElementById('offerInput').value.trim();
     if (!rawKey) return;
     if (!await ensureCrypto()) {
-        showStatus('recvStatus', 'error', getTranslation('errCrypto'));
+        showStatusWithReload('recvStatus', getTranslation('errCrypto'));
         return;
     }
 
@@ -766,7 +1031,7 @@ async function createAnswer() {
         try {
             offerObj = JSON.parse(rawKey);
         } catch {
-            return showStatus('recvStatus', 'error', getTranslation('errBadKey'));
+            return showStatusWithReload('recvStatus', getTranslation('errBadKey'));
         }
     }
 
@@ -774,6 +1039,16 @@ async function createAnswer() {
         receiverPC = new RTCPeerConnection({ iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] });
         recvBuffers = [];
         recvTotal = 0;
+        recvPaused = false;
+        recvCancelled = false;
+
+        receiverPC.onconnectionstatechange = () => {
+            if (['disconnected', 'failed', 'closed'].includes(receiverPC.connectionState) && recvTransferActive) {
+                recvTransferActive = false;
+                stopRecvStallWatch();
+                showStatusWithReload('recvStatus', getTranslation('errConnectionLost'));
+            }
+        };
 
         let fileName = 'received_file';
         let fileSize = 0;
@@ -784,9 +1059,38 @@ async function createAnswer() {
         receiverPC.ondatachannel = (e) => {
             const channel = e.channel;
             channel.binaryType = 'arraybuffer';
+            recvChannel = channel;
 
             channel.onmessage = async (ev) => {
             if (typeof ev.data === 'string') {
+                if (ev.data === '__pause__') {
+                    recvPaused = true;
+                    setPauseButtonState('btnPauseRecv', true);
+                    showStatus('recvStatus', 'warning', getTranslation('statusPausedByPeer'), false);
+                    return;
+                }
+
+                if (ev.data === '__resume__') {
+                    recvPaused = false;
+                    setPauseButtonState('btnPauseRecv', false);
+                    showStatus('recvStatus', 'info', getTranslation('statusResumedByPeer'), true);
+                    return;
+                }
+
+                if (ev.data === '__cancel__') {
+                    recvCancelled = true;
+                    recvTransferActive = false;
+                    stopRecvStallWatch();
+                    showStatus('recvStatus', 'warning', getTranslation('statusCancelledByPeer'), false);
+                    if (writableStream) {
+                        const ws = writableStream;
+                        writableStream = null;
+                        writeQueue.then(async () => { try { await ws.abort(); } catch (e) { /* ignore */ } });
+                    }
+                    setTimeout(() => resetReceiver(true), 1200);
+                    return;
+                }
+
                 if (ev.data === '__done__') {
                     // Clear resume record
                     if (channel._resumeKey) {
@@ -795,6 +1099,10 @@ async function createAnswer() {
                     }
 
                     // Show success UI immediately, before waiting for disk close
+                    recvTransferActive = false;
+                    stopRecvStallWatch();
+                    const recvControlsDone = document.getElementById('recvTransferControls');
+                    if (recvControlsDone) recvControlsDone.style.display = 'none';
                     showStatus('recvStatus', 'success', getTranslation('statusFileReceived', { name: fmtName(fileName), size: fmtSize(fileSize) }));
                     setProgress('recvProgressFill', 'recvReceived', 'recvProgressPct', 100, getTranslation('progressDone'));
                     document.getElementById('recvETA').textContent = getTranslation('progressEtaDone');
@@ -962,7 +1270,9 @@ async function createAnswer() {
                         await writableStream.write(chunkData);
                     } catch (e) {
                         console.error('Write error:', e);
-                        showStatus('recvStatus', 'error', 'Write error: ' + e.message);
+                        recvTransferActive = false;
+                        stopRecvStallWatch();
+                        showStatusWithReload('recvStatus', 'Write error: ' + e.message);
                     }
                 });
             } else {
@@ -970,6 +1280,11 @@ async function createAnswer() {
             }
 
             recvTotal += ev.data.byteLength;
+            recvLastProgressTs = Date.now();
+            if (!recvTransferActive) {
+                recvTransferActive = true;
+                startRecvStallWatch();
+            }
             const now = Date.now();
             if (!startTime) { startTime = now; lastTime = now; lastRecv = 0; }
 
@@ -1017,7 +1332,7 @@ async function createAnswer() {
         document.getElementById('recvProgress').classList.add('visible');
     } catch (e) {
         if (receiverPC) { receiverPC.close(); receiverPC = null; }
-        showStatus('recvStatus', 'error', getTranslation('errCreateAnswer') + e.message);
+        showStatusWithReload('recvStatus', getTranslation('errCreateAnswer') + e.message);
     }
 }
 
@@ -1040,11 +1355,19 @@ function stopQRCycler() {
     if (answerControls) answerControls.remove();
 }
 
-function generateChunkedQR(containerId, noteId, dataStr) {
+async function generateChunkedQR(containerId, noteId, dataStr) {
     stopQRCycler();
     const container = document.getElementById(containerId);
     const note = document.getElementById(noteId);
     container.innerHTML = '';
+
+    try {
+        await ensureQRCodeLib();
+    } catch (e) {
+        container.innerHTML = '<p style="color:var(--red);padding:12px;">Ошибка загрузки библиотеки QR</p>';
+        return;
+    }
+
     container.classList.remove('qr-pop');
     void container.offsetWidth; // restart animation
     container.classList.add('qr-pop');
@@ -1198,6 +1521,9 @@ function switchTab(prefix, type, btnEl) {
     }
 }
 
+let scanTorchTrack = null;
+let scanTorchOn = false;
+
 async function openScanner(targetInputId) {
     closeScanner();
     scanTargetId = targetInputId;
@@ -1216,13 +1542,34 @@ async function openScanner(targetInputId) {
             throw new Error(getTranslation('cameraNotSupported'));
         }
 
-        scanStream = await navigator.mediaDevices.getUserMedia({ 
-            video: { facingMode: 'environment', width: { ideal: 640 }, height: { ideal: 480 } } 
-        });
-        
+        await ensureJsQRLib();
+
+        // Запрашиваем максимально доступное разрешение и непрерывный автофокус —
+        // браузер сам подберёт ближайшее, если камера не поддерживает точные значения.
+        const constraints = {
+            video: {
+                facingMode: { ideal: 'environment' },
+                width: { ideal: 1920, min: 1280 },
+                height: { ideal: 1080, min: 720 },
+                advanced: [{ focusMode: 'continuous' }]
+            }
+        };
+
+        try {
+            scanStream = await navigator.mediaDevices.getUserMedia(constraints);
+        } catch (highResErr) {
+            // Некоторые камеры/браузеры отклоняют advanced-констрейнты или min — откатываемся мягче
+            scanStream = await navigator.mediaDevices.getUserMedia({
+                video: { facingMode: 'environment', width: { ideal: 1920 }, height: { ideal: 1080 } }
+            });
+        }
+
         const video = document.getElementById('scanVideo');
         video.srcObject = scanStream;
         await video.play();
+
+        setupTorchButton();
+
         status.textContent = getTranslation('scanHint');
         startJsQRLoop();
     } catch (err) {
@@ -1233,6 +1580,33 @@ async function openScanner(targetInputId) {
         }
         status.style.color = 'var(--red)';
     }
+}
+
+function setupTorchButton() {
+    const btn = document.getElementById('scanTorchBtn');
+    if (!btn) return;
+    scanTorchTrack = null;
+    scanTorchOn = false;
+    btn.style.display = 'none';
+    btn.classList.remove('active');
+
+    const track = scanStream && scanStream.getVideoTracks()[0];
+    if (!track) return;
+    const caps = track.getCapabilities ? track.getCapabilities() : {};
+    if (caps.torch) {
+        scanTorchTrack = track;
+        btn.style.display = 'inline-flex';
+    }
+}
+
+function toggleTorch() {
+    if (!scanTorchTrack) return;
+    scanTorchOn = !scanTorchOn;
+    scanTorchTrack.applyConstraints({ advanced: [{ torch: scanTorchOn }] }).catch(() => {
+        scanTorchOn = !scanTorchOn; // revert on failure
+    });
+    const btn = document.getElementById('scanTorchBtn');
+    if (btn) btn.classList.toggle('active', scanTorchOn);
 }
 
 function startJsQRLoop() {
@@ -1254,8 +1628,14 @@ function startJsQRLoop() {
                 }
             }
 
-            const w = Math.min(video.videoWidth || 640, 960);
-            const h = Math.round(w * ((video.videoHeight || 480) / (video.videoWidth || 640)));
+            // Берём кадр в максимальном доступном разрешении — так jsQR видит больше деталей
+            // и лучше декодирует QR издалека или при плохом освещении. Ограничиваем только
+            // очень большие кадры (>1600px), чтобы не проседала частота кадров.
+            const rawW = video.videoWidth || 1280;
+            const rawH = video.videoHeight || 720;
+            const scale = rawW > 1600 ? 1600 / rawW : 1;
+            const w = Math.round(rawW * scale);
+            const h = Math.round(rawH * scale);
             canvas.width = w; canvas.height = h;
             ctx.drawImage(video, 0, 0, w, h);
             const imageData = ctx.getImageData(0, 0, w, h);
@@ -1270,6 +1650,16 @@ function startJsQRLoop() {
     scanRafId = requestAnimationFrame(tick);
 }
 
+function flashScanSuccess() {
+    const video = document.getElementById('scanVideo');
+    if (!video) return;
+    video.classList.remove('scan-flash');
+    // force reflow so the animation can restart if it's already running
+    void video.offsetWidth;
+    video.classList.add('scan-flash');
+    setTimeout(() => video.classList.remove('scan-flash'), 650);
+}
+
 function processScannedChunk(data) {
     const status = document.getElementById('scanStatus');
 
@@ -1281,13 +1671,34 @@ function processScannedChunk(data) {
             const payload = parts[3];
 
             totalExpectedChunks = total;
-            scannedChunks[idx] = payload;
 
             const collected = Object.keys(scannedChunks).length;
-            status.textContent = getTranslation('partsCollected', { collected: collected, total: total });
+            const nextExpectedIdx = collected + 1;
+
+            // Already have this part — ignore silently (camera re-reading the same frame)
+            if (scannedChunks[idx] !== undefined) {
+                return;
+            }
+
+            // Strict order enforcement: reject any part that isn't the next expected one
+            if (idx !== nextExpectedIdx) {
+                status.textContent = getTranslation('qrWrongOrder', { expected: nextExpectedIdx, got: idx });
+                status.style.color = 'var(--red)';
+                return;
+            }
+
+            scannedChunks[idx] = payload;
+            const newCollected = idx;
+
+            status.textContent = getTranslation('partsCollected', { collected: newCollected, total: total });
             status.style.color = 'var(--blue)';
 
-            if (collected === total) {
+            // Green glow flash every 3 successfully scanned parts
+            if (newCollected % 3 === 0) {
+                flashScanSuccess();
+            }
+
+            if (newCollected === total) {
                 let fullData = '';
                 for (let i = 1; i <= total; i++) {
                     fullData += scannedChunks[i];
@@ -1295,6 +1706,7 @@ function processScannedChunk(data) {
                 document.getElementById(scanTargetId).value = fullData;
                 status.textContent = getTranslation('qrSuccess');
                 status.style.color = 'var(--green)';
+                flashScanSuccess();
                 setTimeout(closeScanner, 800);
             }
             return;
@@ -1304,6 +1716,7 @@ function processScannedChunk(data) {
     document.getElementById(scanTargetId).value = data;
     status.textContent = getTranslation('qrScanned');
     status.style.color = 'var(--green)';
+    flashScanSuccess();
     setTimeout(closeScanner, 500);
 }
 
@@ -1314,6 +1727,13 @@ function closeScanner() {
         scanStream = null;
     }
     scanDetector = null;
+    scanTorchTrack = null;
+    scanTorchOn = false;
+    const torchBtn = document.getElementById('scanTorchBtn');
+    if (torchBtn) {
+        torchBtn.style.display = 'none';
+        torchBtn.classList.remove('active');
+    }
     document.getElementById('scanVideo').srcObject = null;
     document.getElementById('scanModal').classList.remove('visible');
 }
@@ -1337,9 +1757,20 @@ if (faqModal) {
     });
 }
 
+window.addEventListener('beforeunload', (e) => {
+    if (sendTransferActive || recvTransferActive) {
+        e.preventDefault();
+        e.returnValue = '';
+    }
+});
+
 setLang('ru');
 
 window.setMode = setMode;
+window.togglePauseSend = togglePauseSend;
+window.cancelSend = cancelSend;
+window.togglePauseRecv = togglePauseRecv;
+window.cancelRecv = cancelRecv;
 window.setLang = setLang;
 window.handleDrop = handleDrop;
 window.handleFile = handleFile;
@@ -1350,5 +1781,6 @@ window.copyText = copyText;
 window.switchTab = switchTab;
 window.openScanner = openScanner;
 window.closeScanner = closeScanner;
+window.toggleTorch = toggleTorch;
 window.createAnswer = createAnswer;
 window.fmtSize = fmtSize;
