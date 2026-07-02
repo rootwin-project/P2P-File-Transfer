@@ -24,6 +24,10 @@ function ensureQRCodeLib() {
 function ensureJsQRLib() {
     return loadScript('https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js');
 }
+// Прогреваем библиотеку заранее в фоне, не дожидаясь клика по кнопке сканирования —
+// на iOS Safari/Chrome (WebKit) getUserMedia теряет привязку к жесту пользователя,
+// если между кликом и вызовом проходит слишком много времени (например, на загрузку скрипта).
+ensureJsQRLib().catch(() => {});
 
 let currentLang = 'ru';
 let currentMode = 'send';
@@ -1530,7 +1534,7 @@ async function openScanner(targetInputId) {
     scannedChunks = {};
     totalExpectedChunks = 0;
     scanDetector = 'BarcodeDetector' in window ? new BarcodeDetector({ formats: ['qr_code'] }) : null;
-    
+
     const modal = document.getElementById('scanModal');
     const status = document.getElementById('scanStatus');
     status.textContent = '';
@@ -1542,31 +1546,39 @@ async function openScanner(targetInputId) {
             throw new Error(getTranslation('cameraNotSupported'));
         }
 
-        await ensureJsQRLib();
+        // Запускаем getUserMedia сразу же, синхронно в этом же тике клика — на iOS
+        // (Safari и Chrome, оба работают на WebKit) промис легко "отвязывается" от
+        // жеста пользователя, если перед вызовом есть await на загрузку скрипта и т.д.
+        // jsQR при этом подгружается параллельно (обычно уже прогрет заранее).
+        const getCameraStream = (constraints) => navigator.mediaDevices.getUserMedia(constraints);
 
-        // Запрашиваем максимально доступное разрешение и непрерывный автофокус —
-        // браузер сам подберёт ближайшее, если камера не поддерживает точные значения.
-        const constraints = {
+        const camPromise = getCameraStream({
+            audio: false,
             video: {
                 facingMode: { ideal: 'environment' },
-                width: { ideal: 1920, min: 1280 },
-                height: { ideal: 1080, min: 720 },
-                advanced: [{ focusMode: 'continuous' }]
+                width: { ideal: 1280 },
+                height: { ideal: 720 }
             }
-        };
+        }).catch(async () => {
+            // Мягкий фолбэк: самые базовые констрейнты без ideal-размеров —
+            // некоторые версии iOS Safari отклоняют более строгие запросы.
+            return getCameraStream({ audio: false, video: { facingMode: 'environment' } });
+        });
 
-        try {
-            scanStream = await navigator.mediaDevices.getUserMedia(constraints);
-        } catch (highResErr) {
-            // Некоторые камеры/браузеры отклоняют advanced-констрейнты или min — откатываемся мягче
-            scanStream = await navigator.mediaDevices.getUserMedia({
-                video: { facingMode: 'environment', width: { ideal: 1920 }, height: { ideal: 1080 } }
-            });
-        }
+        const [stream] = await Promise.all([camPromise, ensureJsQRLib()]);
+        scanStream = stream;
 
         const video = document.getElementById('scanVideo');
+        video.muted = true;
+        video.playsInline = true;
         video.srcObject = scanStream;
-        await video.play();
+        try {
+            await video.play();
+        } catch (playErr) {
+            // На некоторых версиях iOS первый play() может быть отклонён — пробуем ещё раз.
+            await new Promise(r => setTimeout(r, 150));
+            await video.play().catch(() => {});
+        }
 
         setupTorchButton();
 
@@ -1614,38 +1626,49 @@ function startJsQRLoop() {
     const canvas = document.getElementById('scanCanvas');
     const ctx = canvas.getContext('2d', { willReadFrequently: true });
 
-    async function tick() {
-        if (!scanStream) return;
-        if (video.readyState === video.HAVE_ENOUGH_DATA) {
-            if (scanDetector) {
-                try {
-                    const codes = await scanDetector.detect(video);
-                    if (codes && codes.length > 0 && codes[0].rawValue) {
-                        processScannedChunk(codes[0].rawValue);
-                    }
-                } catch (err) {
-                    scanDetector = null;
-                }
-            }
+    // На iOS (Safari и Chrome, оба на движке WebKit) чтение пикселей с канваса
+    // (getImageData) на каждый animation-frame — очень дорогая операция и она
+    // "подвешивает" превью камеры, из-за чего сканер выглядит нерабочим.
+    // Ограничиваем частоту попыток распознавания и понижаем разрешение кадра —
+    // этого более чем достаточно для чтения QR, а камера остаётся плавной.
+    const DETECT_INTERVAL_MS = 120;
+    const MAX_PROCESS_WIDTH = 900;
+    let lastAttempt = 0;
 
-            // Берём кадр в максимальном доступном разрешении — так jsQR видит больше деталей
-            // и лучше декодирует QR издалека или при плохом освещении. Ограничиваем только
-            // очень большие кадры (>1600px), чтобы не проседала частота кадров.
-            const rawW = video.videoWidth || 1280;
-            const rawH = video.videoHeight || 720;
-            const scale = rawW > 1600 ? 1600 / rawW : 1;
-            const w = Math.round(rawW * scale);
-            const h = Math.round(rawH * scale);
-            canvas.width = w; canvas.height = h;
-            ctx.drawImage(video, 0, 0, w, h);
-            const imageData = ctx.getImageData(0, 0, w, h);
-            
-            const code = jsQR(imageData.data, w, h, { inversionAttempts: 'attemptBoth' });
-            if (code) {
-                processScannedChunk(code.data);
+    async function tick(ts) {
+        if (!scanStream) return;
+        scanRafId = requestAnimationFrame(tick);
+
+        if (ts - lastAttempt < DETECT_INTERVAL_MS) return;
+        lastAttempt = ts;
+
+        if (video.readyState !== video.HAVE_ENOUGH_DATA) return;
+
+        if (scanDetector) {
+            try {
+                const codes = await scanDetector.detect(video);
+                if (codes && codes.length > 0 && codes[0].rawValue) {
+                    processScannedChunk(codes[0].rawValue);
+                }
+                return;
+            } catch (err) {
+                scanDetector = null;
             }
         }
-        scanRafId = requestAnimationFrame(tick);
+
+        const rawW = video.videoWidth || 1280;
+        const rawH = video.videoHeight || 720;
+        const scale = rawW > MAX_PROCESS_WIDTH ? MAX_PROCESS_WIDTH / rawW : 1;
+        const w = Math.round(rawW * scale);
+        const h = Math.round(rawH * scale);
+        canvas.width = w; canvas.height = h;
+        ctx.drawImage(video, 0, 0, w, h);
+        const imageData = ctx.getImageData(0, 0, w, h);
+
+        const code = jsQR(imageData.data, w, h, { inversionAttempts: 'attemptBoth' });
+        if (code) {
+            processScannedChunk(code.data);
+        }
     }
     scanRafId = requestAnimationFrame(tick);
 }
