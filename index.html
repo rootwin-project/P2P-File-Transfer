@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="ru">
+<html lang="en">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -98,9 +98,28 @@
   </div>
   <span class="navbar-brand" data-i18n="brand">P2P File Transfer</span>
   <span class="navbar-tag"><span class="status-dot" id="connStatusDot"></span><span data-i18n="tag">END-TO-END ENCRYPTED</span></span>
-  <div class="lang-switch">
-    <button onclick="window.setLang('ru')" id="lang-ru" class="lang-btn active">RU</button>
-    <button onclick="window.setLang('en')" id="lang-en" class="lang-btn">EN</button>
+  <!-- Language switcher: globe button + dropdown (desktop) / bottom sheet (mobile) -->
+  <div class="lang-switch" id="langSwitch">
+    <button class="lang-globe-btn" id="langGlobeBtn"
+            onclick="window.toggleLangMenu()"
+            aria-label="Change language"
+            aria-expanded="false"
+            aria-controls="langDropdown">
+      <!-- Globe icon -->
+      <svg class="globe-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" aria-hidden="true">
+        <circle cx="8" cy="8" r="6.3"/>
+        <ellipse cx="8" cy="8" rx="2.4" ry="6.3"/>
+        <line x1="1.7" y1="5.8" x2="14.3" y2="5.8"/>
+        <line x1="1.7" y1="10.2" x2="14.3" y2="10.2"/>
+      </svg>
+      <span class="lang-current-code" id="langCurrentCode">EN</span>
+      <!-- Chevron -->
+      <svg class="chevron-icon" viewBox="0 0 10 6" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true">
+        <path d="M1 1l4 4 4-4"/>
+      </svg>
+    </button>
+    <!-- Desktop dropdown (populated by JS) -->
+    <div class="lang-dropdown" id="langDropdown" role="listbox" aria-label="Select language"></div>
   </div>
 </nav>
 
@@ -354,6 +373,23 @@
             DEVELOPED BY <a href="https://t.me/ROOTWIN_PROJECT" target="_blank" rel="noopener noreferrer">ROOTWIN PROJECT</a>
         </div>
     </div>
+</div>
+
+
+<!-- Language Bottom Sheet (mobile, populated by JS) -->
+<div class="lang-sheet-backdrop" id="langSheetBackdrop" onclick="window.closeLangSheet()" aria-hidden="true"></div>
+<div class="lang-sheet" id="langSheet" role="dialog" aria-modal="true" aria-label="Select language">
+  <div class="lang-sheet-handle" aria-hidden="true"></div>
+  <div class="lang-sheet-title">
+    <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" aria-hidden="true">
+      <circle cx="8" cy="8" r="6.3"/>
+      <ellipse cx="8" cy="8" rx="2.4" ry="6.3"/>
+      <line x1="1.7" y1="5.8" x2="14.3" y2="5.8"/>
+      <line x1="1.7" y1="10.2" x2="14.3" y2="10.2"/>
+    </svg>
+    LANGUAGE
+  </div>
+  <div class="lang-sheet-list" id="langSheetList" role="listbox" aria-label="Select language"></div>
 </div>
 
 <script type="module" src="js/app.js"></script>

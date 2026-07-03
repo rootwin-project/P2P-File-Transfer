@@ -1,3 +1,5 @@
+import { i18n, LANG_META, SUPPORTED_LANGS, detectLang, saveLang } from './i18n.js';
+
 let initCrypto = null;
 let pack_key = null;
 let unpack_key = null;
@@ -29,7 +31,7 @@ function ensureJsQRLib() {
 // если между кликом и вызовом проходит слишком много времени (например, на загрузку скрипта).
 ensureJsQRLib().catch(() => {});
 
-let currentLang = 'ru';
+let currentLang = 'en';
 let currentMode = 'send';
 let selectedFile = null;
 let senderPC = null;
@@ -129,234 +131,7 @@ function resumeKey(name, size, hash) {
     return `${name}::${size}::${hash}`;
 }
 
-const i18n = {
-    ru: {
-        brand: 'P2P File Transfer',
-        tag: 'END-TO-END ENCRYPTED',
-        modeSend: '📤 Отправитель',
-        modeRecv: '📥 Получатель',
-        sendTitle: 'Отправка файла',
-        sendDesc: 'Инициализация соединения и создание ключа',
-        step1Send: 'Шаг 1 — Выберите файл',
-        dropText: 'Нажмите или перетащите файл сюда',
-        dropHint: 'Любой тип и размер файла',
-        btnCreate: 'Создать ключ соединения →',
-        step2Send: 'Шаг 2 — Передайте ключ получателю',
-        tabText: '📋 Текст',
-        tabQr: '📱 QR-код',
-        copy: 'Копировать',
-        hintSend: 'Скопируйте текст или покажите QR-код получателю',
-        step3Send: 'Шаг 3 — Вставьте ответный ключ',
-        btnScanAns: '📷 Сканировать QR-код получателя',
-        btnConnect: 'Подключиться и отправить файл',
-        step4Send: 'Шаг 4 — Передача файла',
-        eta: 'Осталось:',
-        speed: 'Скорость:',
-        sent: 'Передано:',
-        recvTitle: 'Получение файла',
-        recvDesc: 'Вставьте ключ отправителя для скачивания',
-        step1Recv: 'Шаг 1 — Вставьте ключ отправителя',
-        btnScanOff: '📷 Сканировать QR-код отправителя',
-        btnCreateAns: 'Создать ответный ключ →',
-        step2Recv: 'Шаг 2 — Передайте ответный ключ',
-        hintRecv: 'Отправьте этот текст обратно или покажите QR-код',
-        step3Recv: 'Шаг 3 — Ожидание и получение файла',
-        received: 'Получено:',
-        modalTitle: '📷 Сканировать QR-код',
-        scanHint: 'Наведите камеру на QR-код',
-        faqTitle: 'P2P FILE TRANSFER',
-        faqQ1: 'ЧТО ЭТО?',
-        faqA1: 'Это инструмент для мгновенной и прямой передачи файлов любой величины между устройствами. Связь устанавливается непосредственно между двумя браузерами.',
-        faqQ2: 'КАК ЭТО РАБОТАЕТ?',
-        faqA2: 'Технология WebRTC находит кратчайший сетевой маршрут между отправителем и получателем. Файл режется на чанки по 64 КБ, а отправка ждёт освобождения внутреннего буфера канала и подтверждения записи, чтобы не забивать память и не перегружать браузер.',
-        faqQ3: 'ПОЧЕМУ ЭТО БЕЗОПАСНО?',
-        faqA3: 'Перед отправкой в сеть каждый кусок данных принудительно шифруется локальным криптографическим движком на базе WebAssembly (Rust) по алгоритму AES-256-GCM. Секретные ключи генерируются на вашем компьютере и не передаются на сторонние сервера в открытом виде.',
-        faqQ4: 'ЗАЧЕМ ЭТО НУЖНО?',
-        faqA4: 'Никаких облачных хранилищ, логов и промежуточных серверов. Файлы не копятся в памяти там, где браузер умеет писать на диск сразу, а реальное ограничение на размер файла зависит от браузера и его встроенных лимитов.',
-        faqQ5: 'КАКИЕ БРАУЗЕРЫ ПОДХОДЯТ?',
-        faqA5: 'Лучший режим для огромных файлов: Chrome, Edge и другие Chromium-браузеры на HTTPS — они умеют писать файл сразу на диск через File System Access API. Firefox и Safari поддерживают WebRTC, но без прямой записи на диск приложение использует fallback через скачивание, поэтому для очень больших файлов там возможны лимиты памяти.',
-        qrReady: 'Готово · {size}',
-        qrPart: 'Часть {current} из {total} · {cameraHint}',
-        qrCameraHint: 'Наведите камеру',
-        cameraNotSupported: 'Камера не поддерживается вашим браузером',
-        cameraAccessDenied: 'Доступ к камере запрещен. Разрешите в настройках.',
-        cameraError: 'Ошибка камеры: ',
-        qrPrev: 'Предыдущая часть',
-        qrNext: 'Следующая часть',
-        qrPause: 'Приостановить автопрокрутку',
-        qrPlay: 'Запустить автопрокрутку',
-        btnSaveFile: '📥 Выбрать папку',
-        recvStreamStatus: 'Получение файла с прямой записью на диск...',
-        saveCanceled: 'Выбор папки отменён. Нажмите кнопку ещё раз или <a href=\"#\" id=\"fallback-blob-link\" style=\"text-decoration:underline;color:inherit;font-weight:600;\">скачайте в память браузера</a>',
-        saveNotSupported: 'Запись на диск не поддерживается в этом браузере. Файл будет собран в памяти...',
-        saveFallbackActive: 'Запись на диск отменена. Файл будет собран в памяти...',
-        savePrompt: 'Нажмите \"Выбрать папку\" для потоковой записи на диск',
-        errCrypto: 'Ошибка загрузки криптомодуля',
-        statusConnected: 'Подключено. Ожидание готовности получателя...',
-        statusReadyStream: 'Получатель готов. Отправка файла на диск...',
-        statusReadyBlob: 'Получатель готов. Передача файла...',
-        errCreateKey: 'Ошибка создания ключа: ',
-        statusSentOk: 'Файл успешно отправлен!',
-        errTransfer: 'Ошибка передачи: ',
-        statusApplyingAnswer: 'Применение ответа...',
-        errBadAnswerKey: 'Неверный формат ключа ответа',
-        errConnect: 'Ошибка подключения: ',
-        errBadKey: 'Неверный формат ключа',
-        statusFileReceived: 'Файл "{name}" ({size}) успешно получен!',
-        statusBrowserFallback: 'Браузер не умеет писать напрямую на диск. Файл будет скачан в конце.',
-        statusChannelOpen: 'Канал открыт. Ожидание метаданных...',
-        statusConnReady: 'Соединение готово. Ожидание файла...',
-        errCreateAnswer: 'Ошибка создания ответа: ',
-        errCancelBuffer: 'Канал передачи закрыт',
-        errCancelBufferErr: 'Ошибка канала передачи',
-        progressSent: 'Отправлено: ',
-        progressDone: 'Готово',
-        progressEtaDone: '0 сек',
-        copied: 'Скопировано!',
-        creating: 'Создание...',
-        keyCreated: 'Ключ создан',
-        ansCreated: 'Ответ создан',
-        qrDisplaying: 'Отображение ключа...',
-        qrSuccess: 'QR-код успешно собран!',
-        qrScanned: 'QR-код отсканирован!',
-        partsCollected: 'Собрано частей: {collected} из {total}',
-        qrWrongOrder: 'Нужна часть {expected}, отсканирована часть {got}. Наведите камеру на нужную часть QR-кода.',
-        etaSeconds: '{seconds} сек',
-        etaMinutesSeconds: '{minutes} мин {seconds} сек',
-        etaHoursMinutes: '{hours} ч {minutes} мин',
-        resumeFound: 'Найден прерванный файл. Докачать с {pct}%?',
-        resumeYes: 'Продолжить',
-        resumeNo: 'Начать заново',
-        statusResuming: 'Докачка с {pct}%...',
-        statusResumingReady: 'Получатель готов к докачке с чанка {chunk}...',
-        btnPause: '⏸ Пауза',
-        btnResume: '▶ Продолжить',
-        btnCancel: '✕ Отменить',
-        btnReload: '🔄 Перезагрузить страницу',
-        keepTabOpen: '⚠️ Не закрывайте и не перезагружайте эту вкладку во время передачи файла',
-        statusPaused: 'Передача приостановлена',
-        statusPausedByPeer: 'Собеседник приостановил передачу',
-        statusResumedByPeer: 'Собеседник возобновил передачу',
-        statusCancelled: 'Передача отменена',
-        statusCancelledByPeer: 'Собеседник отменил передачу',
-        stallWarning: '⏳ Долго нет прогресса. Возможно, соединение оборвано или собеседник закрыл вкладку браузера.',
-        errConnectionLost: 'Соединение потеряно. Возможно, собеседник закрыл вкладку браузера или пропала связь.',
-        footerSource: 'Исходный код'
-    },
-    en: {
-        brand: 'P2P File Transfer',
-        tag: 'END-TO-END ENCRYPTED',
-        modeSend: '📤 Sender',
-        modeRecv: '📥 Receiver',
-        sendTitle: 'Send File',
-        sendDesc: 'Initialize connection and generate a key',
-        step1Send: 'Step 1 — Select File',
-        dropText: 'Click or drag file here',
-        dropHint: 'Any file type and size',
-        btnCreate: 'Generate Connection Key →',
-        step2Send: 'Step 2 — Share Key with Receiver',
-        tabText: '📋 Text',
-        tabQr: '📱 QR Code',
-        copy: 'Copy',
-        hintSend: 'Copy text or show the QR code to the receiver',
-        step3Send: 'Step 3 — Paste Response Key',
-        btnScanAns: '📷 Scan Receiver QR Code',
-        btnConnect: 'Connect & Send File',
-        step4Send: 'Step 4 — File Transfer',
-        eta: 'Remaining:',
-        speed: 'Speed:',
-        sent: 'Sent:',
-        recvTitle: 'Receive File',
-        recvDesc: 'Paste sender key to download',
-        step1Recv: 'Step 1 — Paste Sender Key',
-        btnScanOff: '📷 Scan Sender QR Code',
-        btnCreateAns: 'Generate Response Key →',
-        step2Recv: 'Step 2 — Share Response Key',
-        hintRecv: 'Send this text back or show the QR code',
-        step3Recv: 'Step 3 — Waiting & Receiving File',
-        received: 'Received:',
-        modalTitle: '📷 Scan QR Code',
-        scanHint: 'Point your camera at the QR code',
-        faqTitle: 'P2P FILE TRANSFER',
-        faqQ1: 'WHAT IS IT?',
-        faqA1: 'This is a tool for instant, direct file transfer of any size between devices. The connection is established directly between two browsers.',
-        faqQ2: 'HOW DOES IT WORK?',
-        faqA2: 'WebRTC finds the shortest network route between sender and receiver. Files are split into 64 KB chunks, and sending waits for the channel buffer to drain plus disk-write acknowledgements so the browser is not flooded with queued data.',
-        faqQ3: 'WHY IS IT SAFE?',
-        faqA3: 'Before anything leaves your device, each chunk is encrypted locally with a WebAssembly-powered Rust crypto engine using AES-256-GCM. Secret keys are generated on your computer and are not sent to third-party servers in plain text.',
-        faqQ4: 'WHY DOES THIS MATTER?',
-        faqA4: 'There are no cloud storages, logs, or intermediate servers. Files do not pile up in memory where direct disk writing is available, and the real file size limit depends on the browser and its built-in limits.',
-        faqQ5: 'WHICH BROWSERS WORK BEST?',
-        faqA5: 'Best mode for huge files: Chrome, Edge, and other Chromium browsers over HTTPS because they can write directly to disk with the File System Access API. Firefox and Safari support WebRTC, but without direct disk writing the app falls back to browser download memory, so very large files may hit browser limits.',
-        qrReady: 'Ready · {size}',
-        qrPart: 'Part {current} of {total} · {cameraHint}',
-        qrCameraHint: 'Point your camera',
-        cameraNotSupported: 'Camera is not supported by your browser',
-        cameraAccessDenied: 'Camera access denied. Please allow it in settings.',
-        cameraError: 'Camera error: ',
-        qrPrev: 'Previous part',
-        qrNext: 'Next part',
-        qrPause: 'Pause auto-rotation',
-        qrPlay: 'Resume auto-rotation',
-        btnSaveFile: '📥 Choose folder',
-        recvStreamStatus: 'Receiving file with direct disk write...',
-        saveCanceled: 'Folder selection canceled. Click the button again or <a href=\"#\" id=\"fallback-blob-link\" style=\"text-decoration:underline;color:inherit;font-weight:600;\">download to browser memory</a>',
-        saveNotSupported: 'Direct disk write is not supported in this browser. File will be buffered in memory...',
-        saveFallbackActive: 'Disk write canceled. File will be buffered in memory...',
-        savePrompt: 'Click \"Choose folder\" for direct streaming to disk',
-        errCrypto: 'Failed to load crypto module',
-        statusConnected: 'Connected. Waiting for receiver to get ready...',
-        statusReadyStream: 'Receiver ready. Streaming file to disk...',
-        statusReadyBlob: 'Receiver ready. Transferring file...',
-        errCreateKey: 'Error creating key: ',
-        statusSentOk: 'File sent successfully!',
-        errTransfer: 'Transfer error: ',
-        statusApplyingAnswer: 'Applying response...',
-        errBadAnswerKey: 'Invalid response key format',
-        errConnect: 'Connection error: ',
-        errBadKey: 'Invalid key format',
-        statusFileReceived: 'File "{name}" ({size}) received successfully!',
-        statusBrowserFallback: 'Browser cannot write directly to disk. File will be buffered in memory and downloaded at the end.',
-        statusChannelOpen: 'Channel open. Waiting for metadata...',
-        statusConnReady: 'Connection ready. Waiting for file...',
-        errCreateAnswer: 'Error creating response: ',
-        errCancelBuffer: 'Transfer channel closed',
-        errCancelBufferErr: 'Transfer channel error',
-        progressSent: 'Sent: ',
-        progressDone: 'Done',
-        progressEtaDone: '0 sec',
-        copied: 'Copied!',
-        creating: 'Creating...',
-        keyCreated: 'Key created',
-        ansCreated: 'Response created',
-        qrDisplaying: 'Displaying key...',
-        qrSuccess: 'QR code successfully assembled!',
-        qrScanned: 'QR code scanned!',
-        partsCollected: 'Parts collected: {collected} of {total}',
-        qrWrongOrder: 'Need part {expected}, scanned part {got}. Point the camera at the correct part of the QR code.',
-        etaSeconds: '{seconds} sec',
-        etaMinutesSeconds: '{minutes} min {seconds} sec',
-        etaHoursMinutes: '{hours} h {minutes} min',
-        resumeFound: 'Interrupted transfer found. Resume from {pct}%?',
-        resumeYes: 'Resume',
-        resumeNo: 'Start over',
-        statusResuming: 'Resuming from {pct}%...',
-        statusResumingReady: 'Receiver ready to resume from chunk {chunk}...',
-        btnPause: '⏸ Pause',
-        btnResume: '▶ Resume',
-        btnCancel: '✕ Cancel',
-        btnReload: '🔄 Reload page',
-        keepTabOpen: '⚠️ Do not close or reload this tab while the transfer is in progress',
-        statusPaused: 'Transfer paused',
-        statusPausedByPeer: 'The other side paused the transfer',
-        statusResumedByPeer: 'The other side resumed the transfer',
-        statusCancelled: 'Transfer canceled',
-        statusCancelledByPeer: 'The other side canceled the transfer',
-        stallWarning: '⏳ No progress for a while. The connection may be broken, or the other side may have left the tab.',
-        errConnectionLost: 'Connection lost. The other side may have closed the tab, or the connection dropped.',
-        footerSource: 'Source'
-    }
-};
+// i18n translations are imported from ./i18n.js
 
 async function startApp() {
     await ensureCrypto();
@@ -386,16 +161,116 @@ async function ensureCrypto() {
 startApp();
 
 function setLang(lang) {
-    currentLang = i18n[lang] ? lang : 'ru';
+    currentLang = i18n[lang] ? lang : 'en';
     document.documentElement.lang = currentLang;
+
+    // Update all static text nodes tagged with data-i18n
     document.querySelectorAll('[data-i18n]').forEach((el) => {
         const key = el.getAttribute('data-i18n');
-        const value = i18n[currentLang][key];
+        const value = i18n[currentLang]?.[key];
         if (value != null) el.textContent = value;
     });
-    document.getElementById('lang-ru').classList.toggle('active', currentLang === 'ru');
-    document.getElementById('lang-en').classList.toggle('active', currentLang === 'en');
+
+    // Update globe-button label
+    const codeEl = document.getElementById('langCurrentCode');
+    if (codeEl && LANG_META[currentLang]) {
+        codeEl.textContent = LANG_META[currentLang].code;
+    }
+
+    // Sync active state on every option button (dropdown + sheet)
+    document.querySelectorAll('.lang-option').forEach((btn) => {
+        const active = btn.dataset.lang === currentLang;
+        btn.classList.toggle('active', active);
+        btn.setAttribute('aria-selected', active);
+    });
+
+    // Persist choice
+    saveLang(currentLang);
+
+    // Close any open picker
+    closeLangMenu();
+    closeLangSheet();
 }
+
+// ── Language picker UI ────────────────────────────────────────────────────
+
+/** Populate dropdown & bottom-sheet with one button per language */
+function initLangUI() {
+    const dropdown  = document.getElementById('langDropdown');
+    const sheetList = document.getElementById('langSheetList');
+
+    SUPPORTED_LANGS.forEach((lang) => {
+        const meta = LANG_META[lang];
+        const isActive = lang === currentLang;
+
+        [dropdown, sheetList].forEach((container) => {
+            if (!container) return;
+            const btn = document.createElement('button');
+            btn.className = 'lang-option' + (isActive ? ' active' : '');
+            btn.dataset.lang = lang;
+            btn.setAttribute('role', 'option');
+            btn.setAttribute('aria-selected', isActive);
+            btn.innerHTML =
+                `<span class="lang-option-name">${meta.label}</span>` +
+                `<span class="lang-option-code">${meta.code}</span>`;
+            btn.addEventListener('click', () => setLang(lang));
+            container.appendChild(btn);
+        });
+    });
+
+    // Sync globe label
+    const codeEl = document.getElementById('langCurrentCode');
+    if (codeEl && LANG_META[currentLang]) {
+        codeEl.textContent = LANG_META[currentLang].code;
+    }
+}
+
+/** Toggle dropdown (desktop) or bottom sheet (mobile) */
+function toggleLangMenu() {
+    if (window.matchMedia('(max-width: 640px)').matches) {
+        openLangSheet();
+    } else {
+        const dropdown = document.getElementById('langDropdown');
+        if (dropdown.classList.contains('open')) {
+            closeLangMenu();
+        } else {
+            dropdown.classList.add('open');
+            document.getElementById('langGlobeBtn')?.setAttribute('aria-expanded', 'true');
+        }
+    }
+}
+
+function closeLangMenu() {
+    document.getElementById('langDropdown')?.classList.remove('open');
+    document.getElementById('langGlobeBtn')?.setAttribute('aria-expanded', 'false');
+}
+
+function openLangSheet() {
+    document.getElementById('langSheet')?.classList.add('open');
+    document.getElementById('langSheetBackdrop')?.classList.add('open');
+    document.body.style.overflow = 'hidden';
+    document.body.classList.add('lang-sheet-open');
+}
+
+function closeLangSheet() {
+    document.getElementById('langSheet')?.classList.remove('open');
+    document.getElementById('langSheetBackdrop')?.classList.remove('open');
+    document.body.style.overflow = '';
+    document.body.classList.remove('lang-sheet-open');
+}
+
+// Close dropdown when clicking outside of it
+document.addEventListener('click', (e) => {
+    const langSwitch = document.getElementById('langSwitch');
+    if (langSwitch && !langSwitch.contains(e.target)) {
+        closeLangMenu();
+    }
+});
+
+// Close sheet / dropdown on Escape
+document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') { closeLangMenu(); closeLangSheet(); }
+});
 
 function getTranslation(key, params = {}) {
     let text = i18n[currentLang]?.[key] || i18n['ru']?.[key] || '';
@@ -1787,14 +1662,21 @@ window.addEventListener('beforeunload', (e) => {
     }
 });
 
-setLang('ru');
+// Auto-detect language from localStorage → browser → fallback 'en'
+setLang(detectLang());
+// Populate the globe-button dropdown & bottom-sheet
+initLangUI();
 
 window.setMode = setMode;
 window.togglePauseSend = togglePauseSend;
 window.cancelSend = cancelSend;
 window.togglePauseRecv = togglePauseRecv;
 window.cancelRecv = cancelRecv;
-window.setLang = setLang;
+window.setLang        = setLang;
+window.toggleLangMenu = toggleLangMenu;
+window.closeLangMenu  = closeLangMenu;
+window.openLangSheet  = openLangSheet;
+window.closeLangSheet = closeLangSheet;
 window.handleDrop = handleDrop;
 window.handleFile = handleFile;
 window.clearFile = clearFile;
