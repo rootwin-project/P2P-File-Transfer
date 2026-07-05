@@ -706,6 +706,33 @@ body {
   0%   { transform: translateX(-60px); }
   100% { transform: translateX(calc(100% + 60px)); }
 }
+/* Сверкающая кнопка Donate — бегущий блик + пульсирующее свечение границы */
+.donate-sparkle {
+  position: relative;
+  overflow: hidden;
+  animation: donate-glow 2.4s ease-in-out infinite;
+}
+.donate-sparkle::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: -60%;
+  width: 40%;
+  height: 100%;
+  background: linear-gradient(115deg, transparent 0%, rgba(255,255,255,0.55) 50%, transparent 100%);
+  transform: skewX(-18deg);
+  animation: donate-sparkle-sweep 2.6s ease-in-out infinite;
+  pointer-events: none;
+}
+@keyframes donate-sparkle-sweep {
+  0%   { left: -60%; }
+  55%  { left: 130%; }
+  100% { left: 130%; }
+}
+@keyframes donate-glow {
+  0%, 100% { box-shadow: 0 0 0 rgba(96, 165, 250, 0); }
+  50%      { box-shadow: 0 0 8px rgba(96, 165, 250, 0.55); }
+}
 /* Пульсирующее свечение на переднем крае заливки */
 .progress-bar {
   position: relative;
@@ -974,18 +1001,76 @@ body {
   margin-top: auto;
   padding-top: 24px;
   display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+}
+.footer-top {
+  width: 100%;
+  display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 12px;
   flex-wrap: wrap;
 }
-.footer-dev {
+.footer-credit {
   font-size: 10px;
   color: var(--text-muted);
   letter-spacing: 1px;
   font-family: var(--mono);
+  text-align: center;
 }
-.footer-dev span { color: var(--blue); }
+/* Эффект горения — переливающийся градиент огня + мерцающее свечение */
+.footer-credit-fire {
+  background: linear-gradient(90deg,
+    #ff3d00 0%, #ff8a00 18%, #ffd000 32%, #ff8a00 48%,
+    #ff3d00 62%, #ffb300 78%, #ff5500 92%, #ff3d00 100%);
+  background-size: 300% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  animation: fire-flow 2.4s linear infinite, fire-flicker 0.35s ease-in-out infinite alternate;
+}
+@keyframes fire-flow {
+  0%   { background-position: 0% 0%; }
+  100% { background-position: 300% 0%; }
+}
+@keyframes fire-flicker {
+  0%   { filter: brightness(1) drop-shadow(0 0 2px rgba(255,120,0,0.5)); }
+  50%  { filter: brightness(1.25) drop-shadow(0 0 6px rgba(255,90,0,0.85)); }
+  100% { filter: brightness(1.05) drop-shadow(0 0 3px rgba(255,140,0,0.6)); }
+}
+.footer-social {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.social-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  border: 1px solid var(--text-muted);
+  color: var(--text-muted);
+  text-decoration: none;
+  transition: border-color .2s, color .2s, transform .2s;
+  animation: social-glow 2.8s ease-in-out infinite;
+}
+.social-icon:hover {
+  transform: translateY(-2px);
+}
+.social-telegram { animation-delay: 0s; }
+.social-telegram:hover { border-color: #2AABEE; color: #2AABEE; box-shadow: 0 0 10px rgba(42,171,238,0.6); }
+.social-reddit { animation-delay: .3s; }
+.social-reddit:hover { border-color: #FF4500; color: #FF4500; box-shadow: 0 0 10px rgba(255,69,0,0.6); }
+.social-x { animation-delay: .6s; }
+.social-x:hover { border-color: #ffffff; color: #ffffff; box-shadow: 0 0 10px rgba(255,255,255,0.5); }
+@keyframes social-glow {
+  0%, 100% { box-shadow: 0 0 0 rgba(96,165,250,0); }
+  50%      { box-shadow: 0 0 7px rgba(96,165,250,0.45); }
+}
 .footer-info {
   font-size: 10px;
   color: var(--text-muted);
@@ -1140,13 +1225,11 @@ body {
     color: var(--blue);
 }
 
-.footer-dev a,
 .faq-footer a {
   color: var(--blue);
   text-decoration: none;
 }
 
-.footer-dev a:hover,
 .faq-footer a:hover {
   text-decoration: underline;
 }
@@ -1154,6 +1237,16 @@ body {
 @media (max-width: 520px) {
   .card {
     width: calc(100% - 20px);
+  }
+
+  .footer-top {
+    justify-content: center;
+    gap: 16px;
+  }
+
+  .social-icon {
+    width: 30px;
+    height: 30px;
   }
 
   .card-body {

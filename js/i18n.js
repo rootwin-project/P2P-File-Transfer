@@ -162,6 +162,7 @@ export const i18n = {
     stallWarning: '⏳ No progress for a while. The connection may be broken or the other side left.',
     errConnectionLost: 'Connection lost. The other side may have closed the tab or the connection dropped.',
     footerSource: 'Source',
+    footerDonate: 'Donate',
   },
 
   // ── Русский ───────────────────────────────────────────────────────────────
@@ -277,6 +278,7 @@ export const i18n = {
     stallWarning: '⏳ Долго нет прогресса. Возможно, соединение оборвано или собеседник закрыл вкладку.',
     errConnectionLost: 'Соединение потеряно. Возможно, собеседник закрыл вкладку или пропала связь.',
     footerSource: 'Исходный код',
+    footerDonate: 'Донат',
   },
 
   // ── Қазақша ───────────────────────────────────────────────────────────────
@@ -392,6 +394,7 @@ export const i18n = {
     stallWarning: '⏳ Ұзақ уақыт прогресс жоқ. Қосылым үзілген немесе екінші жақ қойындыны жапқан болуы мүмкін.',
     errConnectionLost: 'Қосылым жоғалды. Екінші жақ қойындыны жапқан немесе байланыс үзілген болуы мүмкін.',
     footerSource: 'Бастапқы код',
+    footerDonate: 'Қолдау',
   },
 
   // ── Deutsch ───────────────────────────────────────────────────────────────
@@ -507,6 +510,7 @@ export const i18n = {
     stallWarning: '⏳ Kein Fortschritt seit einer Weile. Verbindung möglicherweise unterbrochen.',
     errConnectionLost: 'Verbindung verloren. Die andere Seite hat möglicherweise den Tab geschlossen.',
     footerSource: 'Quellcode',
+    footerDonate: 'Spenden',
   },
 
   // ── 日本語 ────────────────────────────────────────────────────────────────
@@ -622,6 +626,7 @@ export const i18n = {
     stallWarning: '⏳ しばらく進捗がありません。接続が切れているか、相手がタブを閉じた可能性があります。',
     errConnectionLost: '接続が失われました。相手がタブを閉じたか、接続が切れた可能性があります。',
     footerSource: 'ソースコード',
+    footerDonate: '寄付',
   },
 
   // ── Español ───────────────────────────────────────────────────────────────
@@ -737,6 +742,7 @@ export const i18n = {
     stallWarning: '⏳ Sin progreso durante un tiempo. La conexión puede estar interrumpida.',
     errConnectionLost: 'Conexión perdida. El otro lado puede haber cerrado la pestaña o la conexión se cayó.',
     footerSource: 'Código fuente',
+    footerDonate: 'Donar',
   },
 
   // ── 简体中文 ───────────────────────────────────────────────────────────────
@@ -852,6 +858,7 @@ export const i18n = {
     stallWarning: '⏳ 长时间没有进展。连接可能已断开，或对方已关闭标签页。',
     errConnectionLost: '连接已丢失。对方可能已关闭标签页或连接断开。',
     footerSource: '源代码',
+    footerDonate: '捐赠',
   },
 
   // ── Français ─────────────────────────────────────────────────────────────
@@ -967,5 +974,6 @@ export const i18n = {
     stallWarning: '⏳ Pas de progrès depuis un moment. La connexion est peut-être interrompue.',
     errConnectionLost: 'Connexion perdue. L\'autre partie a peut-être fermé l\'onglet.',
     footerSource: 'Code source',
+    footerDonate: 'Faire un don',
   },
 };
