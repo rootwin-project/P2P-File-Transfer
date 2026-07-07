@@ -487,10 +487,10 @@ function fmtSize(bytes) {
 }
 
 function fmtName(name) {
-    if (name.length <= 40) return name;
+    if (name.length <= 30) return name;
     const ext = name.lastIndexOf('.');
-    if (ext > 0) return name.slice(0, 18) + '…' + name.slice(ext);
-    return name.slice(0, 38) + '…';
+    if (ext > 0) return name.slice(0, 12) + '…' + name.slice(ext);
+    return name.slice(0, 28) + '…';
 }
 
 function fmtETA(seconds) {
