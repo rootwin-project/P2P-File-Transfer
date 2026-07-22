@@ -3,7 +3,7 @@ use aes_gcm::{Aes256Gcm, KeyInit, aead::Aead};
 use aes_gcm::aead::generic_array::GenericArray;
 use pbkdf2::pbkdf2_hmac;
 use sha2::Sha256;
-use base64::{Engine as _, engine::general_purpose::STANDARD as BASE64};
+use base64::{Engine as _, engine::general_purpose::{STANDARD, URL_SAFE, URL_SAFE_NO_PAD}};
 use getrandom::getrandom;
 use serde::{Serialize, Deserialize};
 
@@ -39,6 +39,51 @@ fn derive_key(password: &str, salt: &[u8]) -> [u8; 32] {
     key
 }
 
+/// Strip zero-width junk / line breaks and fix messenger corruption.
+/// - URL-safe keys (`-`/`_`): drop all whitespace
+/// - Legacy standard base64 (`+`/`/`): spaces often mean corrupted `+` → restore them
+fn normalize_b64(input: &str) -> String {
+    let cleaned: String = input
+        .chars()
+        .filter(|c| *c != '\u{200b}' && *c != '\u{feff}' && *c != '\u{00a0}')
+        .collect();
+    let url_safe = cleaned.contains('-') || cleaned.contains('_');
+    if url_safe {
+        cleaned.chars().filter(|c| !c.is_whitespace()).collect()
+    } else {
+        // STANDARD base64: newlines/tabs dropped, plain spaces restored as `+`
+        cleaned
+            .chars()
+            .filter_map(|c| {
+                if c == ' ' {
+                    Some('+')
+                } else if c.is_whitespace() {
+                    None
+                } else {
+                    Some(c)
+                }
+            })
+            .collect()
+    }
+}
+
+fn decode_b64_flexible(input: &str) -> Result<Vec<u8>, base64::DecodeError> {
+    let s = normalize_b64(input);
+    // Prefer URL-safe (current format), then standard (legacy keys from older builds).
+    URL_SAFE_NO_PAD
+        .decode(&s)
+        .or_else(|_| URL_SAFE.decode(&s))
+        .or_else(|_| STANDARD.decode(&s))
+        .or_else(|_| {
+            // STANDARD with missing padding
+            let mut padded = s.clone();
+            while padded.len() % 4 != 0 {
+                padded.push('=');
+            }
+            STANDARD.decode(&padded)
+        })
+}
+
 #[wasm_bindgen]
 pub fn pack_key(json_str: &str) -> Result<String, JsValue> {
     let password = gen_password();
@@ -60,19 +105,21 @@ pub fn pack_key(json_str: &str) -> Result<String, JsValue> {
     buf[16..28].copy_from_slice(&iv);
     buf[28..].copy_from_slice(&ciphertext);
     
-    let encrypted_b64 = BASE64.encode(&buf);
+    // URL-safe, no padding — safe to copy via messengers / mobile keyboards
+    // (no `+`, `/`, `=` that get mangled or line-wrapped differently on PC vs phone).
+    let encrypted_b64 = URL_SAFE_NO_PAD.encode(&buf);
     let packet = Packet { e: encrypted_b64, p: password };
     let packet_json = serde_json::to_string(&packet).map_err(|e| JsValue::from_str(&e.to_string()))?;
-    Ok(BASE64.encode(packet_json.as_bytes()))
+    Ok(URL_SAFE_NO_PAD.encode(packet_json.as_bytes()))
 }
 
 #[wasm_bindgen]
 pub fn unpack_key(b64: &str) -> Result<String, JsValue> {
-    let packet_bytes = BASE64.decode(b64).map_err(|e| JsValue::from_str(&e.to_string()))?;
+    let packet_bytes = decode_b64_flexible(b64).map_err(|e| JsValue::from_str(&e.to_string()))?;
     let packet_str = String::from_utf8(packet_bytes).map_err(|e| JsValue::from_str(&e.to_string()))?;
     let packet: Packet = serde_json::from_str(&packet_str).map_err(|e| JsValue::from_str(&e.to_string()))?;
     
-    let buf = BASE64.decode(&packet.e).map_err(|e| JsValue::from_str(&e.to_string()))?;
+    let buf = decode_b64_flexible(&packet.e).map_err(|e| JsValue::from_str(&e.to_string()))?;
     if buf.len() < 28 {
         return Err(JsValue::from_str("Invalid buffer length"));
     }

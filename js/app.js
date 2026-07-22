@@ -79,6 +79,188 @@ const IDB_NAME = 'p2p_transfer';
 const IDB_STORE = 'resume';
 const RESUME_SAVE_INTERVAL = 64; // save progress every N chunks
 
+// Shared ICE config — same on PC and mobile so offer/answer keys stay compatible
+// and NAT traversal works in both directions (phone→PC and PC→phone).
+const ICE_CONFIG = {
+    iceServers: [
+        { urls: 'stun:stun.l.google.com:19302' },
+        { urls: 'stun:stun1.l.google.com:19302' },
+        { urls: 'stun:stun2.l.google.com:19302' },
+        { urls: 'stun:stun.cloudflare.com:3478' },
+    ],
+    iceCandidatePoolSize: 4,
+};
+
+/**
+ * Normalize a pasted/scanned connection key so PC ↔ mobile exchange works even when
+ * messengers insert line breaks, zero-width chars, or turn `+` into spaces.
+ * Must stay in sync with normalize_b64() in src/lib.rs.
+ */
+function normalizeConnectionKey(raw) {
+    if (!raw) return '';
+    let s = String(raw).replace(/[\u200B-\u200D\uFEFF\u00A0]/g, '');
+    const urlSafe = s.includes('-') || s.includes('_');
+    if (urlSafe) {
+        // Current format: only A-Za-z0-9_- — drop every whitespace
+        return s.replace(/\s+/g, '').trim();
+    }
+    // Legacy standard base64: newlines/tabs drop, plain spaces often mean corrupted `+`
+    return s
+        .replace(/[ \t]/g, '+')
+        .replace(/[\r\n\f\v]+/g, '')
+        .trim();
+}
+
+/**
+ * Drop useless ICE candidates that bloat desktop keys (virtual NICs, link-local)
+ * while keeping host + srflx needed for same-WiFi and internet paths.
+ * Result: PC keys are similar in size/shape to mobile keys.
+ */
+function compactSdp(sdp) {
+    if (!sdp || typeof sdp !== 'string') return sdp;
+    const lines = sdp.replace(/\r\n/g, '\n').replace(/\r/g, '\n').split('\n');
+    const out = [];
+    const candidates = [];
+    let endOfCandidatesIdx = -1;
+
+    for (const line of lines) {
+        if (line.startsWith('a=candidate:')) {
+            candidates.push(line);
+        } else if (line === 'a=end-of-candidates') {
+            // Remember position; insert filtered candidates before this marker
+            endOfCandidatesIdx = out.length;
+            out.push(line);
+        } else {
+            out.push(line);
+        }
+    }
+
+    const picked = selectBestCandidates(candidates);
+    if (endOfCandidatesIdx >= 0) {
+        out.splice(endOfCandidatesIdx, 0, ...picked);
+    } else {
+        // No end-of-candidates marker — append before trailing empty lines
+        let insertAt = out.length;
+        while (insertAt > 0 && out[insertAt - 1] === '') insertAt--;
+        out.splice(insertAt, 0, ...picked);
+    }
+    return out.join('\r\n');
+}
+
+function selectBestCandidates(candidates) {
+    if (!candidates.length) return [];
+
+    const scored = [];
+    for (const line of candidates) {
+        // a=candidate:<foundation> <component> <protocol> <priority> <ip> <port> typ <type> ...
+        const parts = line.split(/\s+/);
+        if (parts.length < 8) continue;
+        const protocol = (parts[2] || '').toLowerCase();
+        const ip = parts[4] || '';
+        const typIdx = parts.indexOf('typ');
+        const typ = typIdx >= 0 ? (parts[typIdx + 1] || '') : '';
+
+        // Skip clearly useless addresses that only appear on desktops (VPN/Docker/APIPA)
+        if (/^169\.254\./.test(ip)) continue;           // link-local
+        if (/^0\.0\.0\.0$/.test(ip)) continue;
+        if (/^127\./.test(ip)) continue;                // loopback
+        if (/^172\.(1[6-9]|2\d|3[0-1])\./.test(ip)) {
+            // private docker/vm range — keep only a couple later via limits
+        }
+
+        let score = 0;
+        if (typ === 'host') score += 100;
+        else if (typ === 'srflx') score += 90;
+        else if (typ === 'prflx') score += 70;
+        else if (typ === 'relay') score += 60;
+        else score += 40;
+
+        if (protocol === 'udp') score += 15;
+        else if (protocol === 'tcp') score += 5;
+
+        // Prefer IPv4 for smaller keys / broader mobile support
+        if (ip.includes(':')) score -= 8;
+
+        // Slightly deprioritize typical virtual-bridge ranges
+        if (/^172\.(1[6-9]|2\d|3[0-1])\./.test(ip)) score -= 20;
+        if (/^192\.168\.56\./.test(ip)) score -= 25; // VirtualBox host-only
+        if (/^10\.0\.2\./.test(ip)) score -= 20;      // common VM NAT
+
+        scored.push({ line, score, typ, protocol, ip });
+    }
+
+    scored.sort((a, b) => b.score - a.score);
+
+    // Cap per type so desktop multi-NIC machines don't produce huge multi-QR keys
+    const limits = { host: 3, srflx: 4, prflx: 2, relay: 2, other: 2 };
+    const counts = {};
+    const picked = [];
+    const seen = new Set();
+
+    for (const c of scored) {
+        const key = `${c.typ}|${c.protocol}|${c.ip}`;
+        if (seen.has(key)) continue;
+        const bucket = limits[c.typ] != null ? c.typ : 'other';
+        if ((counts[bucket] || 0) >= (limits[bucket] || 2)) continue;
+        seen.add(key);
+        counts[bucket] = (counts[bucket] || 0) + 1;
+        picked.push(c.line);
+    }
+    return picked;
+}
+
+/** Build a compact, cross-device connection payload from RTCSessionDescription. */
+function sessionToKeyPayload(desc) {
+    const sdp = compactSdp(desc.sdp);
+    return JSON.stringify({ sdp, type: desc.type });
+}
+
+/**
+ * Decode a connection key (offer or answer) into an RTCSessionDescription-like object.
+ * Tolerates whitespace, legacy standard-base64, and raw JSON (very old fallback).
+ */
+async function decodeConnectionKey(rawKey) {
+    const raw = normalizeConnectionKey(rawKey);
+    if (!raw) throw new Error('empty');
+
+    // Try encrypted packed key first (current + legacy formats)
+    if (unpack_key) {
+        try {
+            const unpacked = unpack_key(raw);
+            return JSON.parse(unpacked);
+        } catch {
+            // fall through
+        }
+    }
+
+    // Raw JSON SDP (fallback / debug)
+    try {
+        return JSON.parse(rawKey.trim());
+    } catch {
+        // try normalized as JSON too
+        return JSON.parse(raw);
+    }
+}
+
+/** Wait for ICE gathering with a generous timeout — mobile often needs longer than PC. */
+function waitForIceGathering(pc, timeoutMs = 8000) {
+    return new Promise(resolve => {
+        if (pc.iceGatheringState === 'complete') return resolve();
+        let done = false;
+        const finish = () => {
+            if (done) return;
+            done = true;
+            pc.removeEventListener('icegatheringstatechange', onChange);
+            resolve();
+        };
+        const onChange = () => {
+            if (pc.iceGatheringState === 'complete') finish();
+        };
+        pc.addEventListener('icegatheringstatechange', onChange);
+        setTimeout(finish, timeoutMs);
+    });
+}
+
 function openIDB() {
     return new Promise((resolve, reject) => {
         const req = indexedDB.open(IDB_NAME, 1);
@@ -629,7 +811,7 @@ async function createOffer() {
     btn.disabled = true;
     btn.innerHTML = '<div class="spinner"></div> ' + getTranslation('creating');
     try {
-        senderPC = new RTCPeerConnection({ iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] });
+        senderPC = new RTCPeerConnection(ICE_CONFIG);
         const channel = senderPC.createDataChannel('fileTransfer', { ordered: true });
         channel.binaryType = 'arraybuffer';
         channel.bufferedAmountLowThreshold = SEND_BUFFER_LOW_THRESHOLD;
@@ -718,16 +900,11 @@ async function createOffer() {
         const offer = await senderPC.createOffer();
         await senderPC.setLocalDescription(offer);
 
-        await new Promise(resolve => {
-            if (senderPC.iceGatheringState === 'complete') return resolve();
-            senderPC.onicegatheringstatechange = () => {
-                if (senderPC.iceGatheringState === 'complete') resolve();
-            };
-            setTimeout(resolve, 7000);
-        });
+        await waitForIceGathering(senderPC, 8000);
 
-        const sdpData = JSON.stringify({ sdp: senderPC.localDescription.sdp, type: senderPC.localDescription.type });
-        const packedKey = await pack_key(sdpData);
+        // Compact SDP so desktop keys match mobile size/shape and paste cleanly both ways
+        const sdpData = sessionToKeyPayload(senderPC.localDescription);
+        const packedKey = pack_key(sdpData);
         
         document.getElementById('offerKey').value = packedKey;
         btn.innerHTML = getTranslation('keyCreated');
@@ -864,8 +1041,8 @@ async function sendFileChunked(channel, file, requireAck = false, startChunk = 0
 }
 
 async function applyAnswer() {
-    const rawKey = document.getElementById('answerInput').value.trim();
-    if (!rawKey) return;
+    const rawKey = document.getElementById('answerInput').value;
+    if (!normalizeConnectionKey(rawKey)) return;
     if (!await ensureCrypto()) {
         showStatusWithReload('sendStatus', getTranslation('errCrypto'));
         return;
@@ -877,14 +1054,9 @@ async function applyAnswer() {
 
     let answerObj;
     try {
-        const unpacked = await unpack_key(rawKey);
-        answerObj = JSON.parse(unpacked);
+        answerObj = await decodeConnectionKey(rawKey);
     } catch {
-        try {
-            answerObj = JSON.parse(rawKey);
-        } catch {
-            return showStatusWithReload('sendStatus', getTranslation('errBadAnswerKey'));
-        }
+        return showStatusWithReload('sendStatus', getTranslation('errBadAnswerKey'));
     }
 
     try {
@@ -895,8 +1067,8 @@ async function applyAnswer() {
 }
 
 async function createAnswer() {
-    const rawKey = document.getElementById('offerInput').value.trim();
-    if (!rawKey) return;
+    const rawKey = document.getElementById('offerInput').value;
+    if (!normalizeConnectionKey(rawKey)) return;
     if (!await ensureCrypto()) {
         showStatusWithReload('recvStatus', getTranslation('errCrypto'));
         return;
@@ -904,18 +1076,13 @@ async function createAnswer() {
 
     let offerObj;
     try {
-        const unpacked = await unpack_key(rawKey);
-        offerObj = JSON.parse(unpacked);
+        offerObj = await decodeConnectionKey(rawKey);
     } catch {
-        try {
-            offerObj = JSON.parse(rawKey);
-        } catch {
-            return showStatusWithReload('recvStatus', getTranslation('errBadKey'));
-        }
+        return showStatusWithReload('recvStatus', getTranslation('errBadKey'));
     }
 
     try {
-        receiverPC = new RTCPeerConnection({ iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] });
+        receiverPC = new RTCPeerConnection(ICE_CONFIG);
         recvBuffers = [];
         recvTotal = 0;
         recvPaused = false;
@@ -1033,8 +1200,7 @@ async function createAnswer() {
                             channel._recvChunkIndex = resumeFromChunk;
                             recvTotal = resumeFromChunk * FILE_CHUNK_SIZE;
 
-                            const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
-                            if ('showSaveFilePicker' in window && !isMobile && resumeFromChunk === 0) {
+                            if ('showSaveFilePicker' in window && resumeFromChunk === 0) {
                                 const btnSave = document.getElementById('btnSaveFile');
                                 if (btnSave) {
                                     btnSave.style.display = 'inline-flex';
@@ -1089,7 +1255,7 @@ async function createAnswer() {
                                     showStatus('recvStatus', 'info', getTranslation('statusResuming', { pct }), true);
                                 } else {
                                     channel.send('__ready_blob__');
-                                    if (/Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent) || !('showSaveFilePicker' in window)) {
+                                    if (!('showSaveFilePicker' in window)) {
                                         setStep('r', 3);
                                         showStatus('recvStatus', 'warning', getTranslation('statusBrowserFallback'), true);
                                     }
@@ -1100,7 +1266,6 @@ async function createAnswer() {
                         };
 
                         if (savedChunk > 0) {
-                            // Offer resume via inline banner with two buttons
                             const pct = fileSize ? Math.round(savedChunk * FILE_CHUNK_SIZE / fileSize * 100) : 0;
                             const recvStatusEl = document.getElementById('recvStatus');
                             recvStatusEl.className = 'status-bar visible info';
@@ -1193,16 +1358,11 @@ async function createAnswer() {
         const answer = await receiverPC.createAnswer();
         await receiverPC.setLocalDescription(answer);
 
-        await new Promise(resolve => {
-            if (receiverPC.iceGatheringState === 'complete') return resolve();
-            receiverPC.onicegatheringstatechange = () => {
-                if (receiverPC.iceGatheringState === 'complete') resolve();
-            };
-            setTimeout(resolve, 7000);
-        });
+        await waitForIceGathering(receiverPC, 8000);
 
-        const sdpData = JSON.stringify({ sdp: receiverPC.localDescription.sdp, type: receiverPC.localDescription.type });
-        const packedKey = await pack_key(sdpData);
+        // Same packing path as offer — compact SDP + URL-safe key for PC↔mobile paste/QR
+        const sdpData = sessionToKeyPayload(receiverPC.localDescription);
+        const packedKey = pack_key(sdpData);
         
         document.getElementById('answerKey').value = packedKey;
         generateChunkedQR('answerQR', 'answerQRNote', packedKey);
@@ -1562,11 +1722,15 @@ function processScannedChunk(data) {
     const status = document.getElementById('scanStatus');
 
     if (data.startsWith('P2P|')) {
-        const parts = data.split('|');
-        if (parts.length === 4) {
-            const total = parseInt(parts[1]);
-            const idx = parseInt(parts[2]);
-            const payload = parts[3];
+        // Format: P2P|<total>|<1-based-index>|<payload>
+        // Split only the first 3 pipes so payload stays intact even if corrupted.
+        const match = /^P2P\|(\d+)\|(\d+)\|(.*)$/s.exec(data);
+        if (match) {
+            const total = parseInt(match[1], 10);
+            const idx = parseInt(match[2], 10);
+            const payload = match[3];
+
+            if (!total || !idx || idx > total) return;
 
             totalExpectedChunks = total;
 
@@ -1601,7 +1765,8 @@ function processScannedChunk(data) {
                 for (let i = 1; i <= total; i++) {
                     fullData += scannedChunks[i];
                 }
-                document.getElementById(scanTargetId).value = fullData;
+                // Same normalized key on every device after multi-part QR scan
+                document.getElementById(scanTargetId).value = normalizeConnectionKey(fullData);
                 status.textContent = getTranslation('qrSuccess');
                 status.style.color = 'var(--green)';
                 flashScanSuccess();
@@ -1611,7 +1776,8 @@ function processScannedChunk(data) {
         }
     }
 
-    document.getElementById(scanTargetId).value = data;
+    // Single-part QR — normalize so scanned key matches a pasted one
+    document.getElementById(scanTargetId).value = normalizeConnectionKey(data);
     status.textContent = getTranslation('qrScanned');
     status.style.color = 'var(--green)';
     flashScanSuccess();
