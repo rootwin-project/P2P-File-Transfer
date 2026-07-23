@@ -27,9 +27,6 @@ fn gen_password() -> String {
 }
 
 fn derive_key(password: &str, salt: &[u8]) -> [u8; 32] {
-    // Эффективная соль = случайная соль из пакета + статичный pepper приложения.
-    // Без знания APP_PEPPER восстановить ключ по перехваченному пакету
-    // (даже если пароль и случайная соль известны) невозможно.
     let mut effective_salt = Vec::with_capacity(salt.len() + APP_PEPPER.len());
     effective_salt.extend_from_slice(salt);
     effective_salt.extend_from_slice(APP_PEPPER);
@@ -39,9 +36,6 @@ fn derive_key(password: &str, salt: &[u8]) -> [u8; 32] {
     key
 }
 
-/// Strip zero-width junk / line breaks and fix messenger corruption.
-/// - URL-safe keys (`-`/`_`): drop all whitespace
-/// - Legacy standard base64 (`+`/`/`): spaces often mean corrupted `+` → restore them
 fn normalize_b64(input: &str) -> String {
     let cleaned: String = input
         .chars()
@@ -51,7 +45,6 @@ fn normalize_b64(input: &str) -> String {
     if url_safe {
         cleaned.chars().filter(|c| !c.is_whitespace()).collect()
     } else {
-        // STANDARD base64: newlines/tabs dropped, plain spaces restored as `+`
         cleaned
             .chars()
             .filter_map(|c| {
@@ -69,13 +62,11 @@ fn normalize_b64(input: &str) -> String {
 
 fn decode_b64_flexible(input: &str) -> Result<Vec<u8>, base64::DecodeError> {
     let s = normalize_b64(input);
-    // Prefer URL-safe (current format), then standard (legacy keys from older builds).
     URL_SAFE_NO_PAD
         .decode(&s)
         .or_else(|_| URL_SAFE.decode(&s))
         .or_else(|_| STANDARD.decode(&s))
         .or_else(|_| {
-            // STANDARD with missing padding
             let mut padded = s.clone();
             while padded.len() % 4 != 0 {
                 padded.push('=');
@@ -105,8 +96,6 @@ pub fn pack_key(json_str: &str) -> Result<String, JsValue> {
     buf[16..28].copy_from_slice(&iv);
     buf[28..].copy_from_slice(&ciphertext);
     
-    // URL-safe, no padding — safe to copy via messengers / mobile keyboards
-    // (no `+`, `/`, `=` that get mangled or line-wrapped differently on PC vs phone).
     let encrypted_b64 = URL_SAFE_NO_PAD.encode(&buf);
     let packet = Packet { e: encrypted_b64, p: password };
     let packet_json = serde_json::to_string(&packet).map_err(|e| JsValue::from_str(&e.to_string()))?;

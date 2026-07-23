@@ -1,14 +1,6 @@
-/**
- * js/i18n.js — Centralized localization module
- * All UI strings for all supported languages live here.
- * To add a new language: add an entry to LANG_META, SUPPORTED_LANGS,
- * and a matching key in the `i18n` object below.
- */
 
-/** Languages shown in the switcher, in display order */
 export const SUPPORTED_LANGS = ['en', 'ru', 'kk', 'de', 'ja', 'es', 'zh', 'fr', 'ko', 'uk'];
 
-/** Per-language display metadata */
 export const LANG_META = {
   en: { label: 'English',   code: 'EN' },
   ru: { label: 'Русский',   code: 'RU' },
@@ -22,12 +14,6 @@ export const LANG_META = {
   uk: { label: 'Українська', code: 'UK' },
 };
 
-/**
- * Detect the best language for this user:
- * 1. Saved preference in localStorage
- * 2. Browser language (navigator.language)
- * 3. English as fallback
- */
 export function detectLang() {
   const saved = localStorage.getItem('p2p_lang');
   if (saved && SUPPORTED_LANGS.includes(saved)) return saved;
@@ -35,23 +21,17 @@ export function detectLang() {
   const nav = (navigator.language || 'en').toLowerCase();
   const primary = nav.split('-')[0];
 
-  // navigator.language can return e.g. "zh-CN" → primary "zh" ✓
   if (SUPPORTED_LANGS.includes(primary)) return primary;
 
   return 'en';
 }
 
-/** Persist the user's language choice */
 export function saveLang(lang) {
   localStorage.setItem('p2p_lang', lang);
 }
 
-// ---------------------------------------------------------------------------
-// All translations
-// ---------------------------------------------------------------------------
 export const i18n = {
 
-  // ── English ───────────────────────────────────────────────────────────────
   en: {
     brand: 'P2P File Transfer',
     tag: 'END-TO-END ENCRYPTED',
@@ -60,8 +40,8 @@ export const i18n = {
     sendTitle: 'Send File',
     sendDesc: 'Initialize connection and generate a key',
     step1Send: 'Step 1 — Select File',
-    dropText: 'Click or drag file here',
-    dropHint: 'Any file type and size',
+    dropText: 'Click or drag a file/folder here',
+    dropHint: 'Any file size. For folders, just drag them here.',
     btnCreate: 'Generate Connection Key →',
     step2Send: 'Step 2 — Share Key with Receiver',
     tabText: '📋 Text',
@@ -97,6 +77,8 @@ export const i18n = {
     faqA4: 'No cloud storage, no logs, no intermediate servers. Files do not pile up in memory where direct disk writing is available, and the real file size limit depends only on your browser.',
     faqQ5: 'WHICH BROWSERS WORK BEST?',
     faqA5: 'Best for huge files: Chrome, Edge, and other Chromium browsers over HTTPS — they can write directly to disk via the File System Access API. Firefox and Safari support WebRTC but fall back to browser-memory download for large files.',
+    faqQ6: 'CAN I SEND FOLDERS OR MULTIPLE FILES?',
+    faqA6: 'Yes! You can select multiple files at once in the file picker. On desktop, you can also simply drag and drop an entire folder into the transfer area. The app will automatically pack them into a single archive (on the fly, without long compression) and send them in a single stream.',
     qrReady: 'Ready · {size}',
     qrPart: 'Part {current} of {total} · {cameraHint}',
     qrCameraHint: 'Point your camera',
@@ -167,7 +149,6 @@ export const i18n = {
     footerDonate: 'Donate',
   },
 
-  // ── Русский ───────────────────────────────────────────────────────────────
   ru: {
     brand: 'P2P File Transfer',
     tag: 'END-TO-END ENCRYPTED',
@@ -176,8 +157,8 @@ export const i18n = {
     sendTitle: 'Отправка файла',
     sendDesc: 'Инициализация соединения и создание ключа',
     step1Send: 'Шаг 1 — Выберите файл',
-    dropText: 'Нажмите или перетащите файл сюда',
-    dropHint: 'Любой тип и размер файла',
+    dropText: 'Файл или перетащите папку',
+    dropHint: 'Любой размер. Можно выбрать несколько файлов.',
     btnCreate: 'Создать ключ соединения →',
     step2Send: 'Шаг 2 — Передайте ключ получателю',
     tabText: '📋 Текст',
@@ -213,6 +194,8 @@ export const i18n = {
     faqA4: 'Никаких облачных хранилищ, логов и промежуточных серверов. Файлы не копятся в памяти там, где браузер умеет писать на диск сразу, а реальное ограничение на размер зависит только от браузера.',
     faqQ5: 'КАКИЕ БРАУЗЕРЫ ПОДХОДЯТ?',
     faqA5: 'Лучший режим для огромных файлов: Chrome, Edge и другие Chromium-браузеры на HTTPS — они умеют писать файл сразу на диск через File System Access API. Firefox и Safari поддерживают WebRTC, но без прямой записи на диск возможны лимиты памяти.',
+    faqQ6: 'МОЖНО ЛИ ОТПРАВЛЯТЬ ПАПКИ ИЛИ НЕСКОЛЬКО ФАЙЛОВ?',
+    faqA6: 'Да! Просто перетащите папку в область отправки или выделите сразу несколько файлов в диалоге выбора. Приложение автоматически упакует их в один архив (на лету, без долгого сжатия) и отправит получателю одним потоком.',
     qrReady: 'Готово · {size}',
     qrPart: 'Часть {current} из {total} · {cameraHint}',
     qrCameraHint: 'Наведите камеру',
@@ -283,7 +266,6 @@ export const i18n = {
     footerDonate: 'Донат',
   },
 
-  // ── Қазақша ───────────────────────────────────────────────────────────────
   kk: {
     brand: 'P2P File Transfer',
     tag: 'END-TO-END ENCRYPTED',
@@ -329,6 +311,8 @@ export const i18n = {
     faqA4: 'Ешқандай бұлтты сақтаулар, журналдар немесе аралық серверлер жоқ. Файлдар браузер тікелей дискіге жазатын жерде жадта жиналмайды.',
     faqQ5: 'ҚАНДАЙ БРАУЗЕРЛЕР ЖҰМЫС ІСТЕЙДІ?',
     faqA5: 'Үлкен файлдар үшін ең жақсы нұсқа: HTTPS арқылы Chrome, Edge және басқа Chromium браузерлері — File System Access API арқылы тікелей дискіге жаза алады. Firefox пен Safari WebRTC-ті қолдайды, бірақ үлкен файлдарда жад шектеулері болуы мүмкін.',
+    faqQ6: 'ҚАЛТАЛАРДЫ НЕМЕСЕ БІРНЕШЕ ФАЙЛДЫ ЖІБЕРУГЕ БОЛА МА?',
+    faqA6: 'Иә! Файл таңдау терезесінде бірнеше файлды бірден таңдай аласыз. Компьютерде бүкіл қалтаны тасымалдау аймағына сүйреп апаруға да болады. Қолданба оларды бір архивке автоматты түрде жинайды (ұзақ сығымдаусыз, лезде) және бір ағын ретінде жібереді.',
     qrReady: 'Дайын · {size}',
     qrPart: '{current} бөлік / {total} · {cameraHint}',
     qrCameraHint: 'Камераны бағыттаңыз',
@@ -399,7 +383,6 @@ export const i18n = {
     footerDonate: 'Қолдау',
   },
 
-  // ── Deutsch ───────────────────────────────────────────────────────────────
   de: {
     brand: 'P2P File Transfer',
     tag: 'END-TO-END VERSCHLÜSSELT',
@@ -445,6 +428,8 @@ export const i18n = {
     faqA4: 'Kein Cloud-Speicher, keine Protokolle, keine Zwischenserver. Dateien häufen sich nicht im Speicher an, und die tatsächliche Dateigrößenbeschränkung hängt nur vom Browser ab.',
     faqQ5: 'WELCHE BROWSER FUNKTIONIEREN AM BESTEN?',
     faqA5: 'Ideal für große Dateien: Chrome, Edge und andere Chromium-Browser über HTTPS – sie können direkt auf die Festplatte schreiben (File System Access API). Firefox und Safari unterstützen WebRTC, nutzen aber bei sehr großen Dateien den Download-Fallback.',
+    faqQ6: 'KANN ICH ORDNER ODER MEHRERE DATEIEN SENDEN?',
+    faqA6: 'Ja! Du kannst im Dateiauswahldialog mehrere Dateien gleichzeitig auswählen. Am Desktop kannst du auch einfach einen ganzen Ordner in den Übertragungsbereich ziehen. Die App packt sie automatisch in ein einziges Archiv (on the fly, ohne lange Komprimierung) und sendet sie als einen Stream.',
     qrReady: 'Bereit · {size}',
     qrPart: 'Teil {current} von {total} · {cameraHint}',
     qrCameraHint: 'Kamera ausrichten',
@@ -561,6 +546,8 @@ export const i18n = {
     faqA4: 'クラウドストレージ、ログ、中間サーバーは一切ありません。ブラウザが直接ディスクに書き込める場合、ファイルはメモリに蓄積されません。',
     faqQ5: 'どのブラウザが最適ですか？',
     faqA5: '大きなファイルに最適: HTTPS上のChrome、Edge、その他Chromiumブラウザ — File System Access APIで直接ディスクに書き込めます。FirefoxとSafariはWebRTCをサポートしていますが、大きなファイルではメモリ制限がある場合があります。',
+    faqQ6: 'フォルダや複数ファイルを送信できますか？',
+    faqA6: 'はい！ファイル選択ダイアログで複数のファイルを一度に選択できます。デスクトップでは、フォルダ全体を転送エリアにドラッグ＆ドロップするだけでも構いません。アプリが自動的に単一のアーカイブにまとめ（長い圧縮なしでその場で）、単一のストリームとして送信します。',
     qrReady: '準備完了 · {size}',
     qrPart: 'パート {current} / {total} · {cameraHint}',
     qrCameraHint: 'カメラを向けてください',
@@ -677,6 +664,8 @@ export const i18n = {
     faqA4: 'Sin almacenamiento en la nube, sin registros, sin servidores intermediarios. Los archivos no se acumulan en memoria cuando hay escritura directa en disco disponible.',
     faqQ5: '¿QUÉ NAVEGADORES FUNCIONAN MEJOR?',
     faqA5: 'Ideal para archivos grandes: Chrome, Edge y otros navegadores Chromium sobre HTTPS, ya que pueden escribir directamente en disco con la File System Access API. Firefox y Safari soportan WebRTC pero pueden tener límites de memoria para archivos muy grandes.',
+    faqQ6: '¿PUEDO ENVIAR CARPETAS O VARIOS ARCHIVOS?',
+    faqA6: '¡Sí! Puedes seleccionar varios archivos a la vez en el selector de archivos. En el escritorio, también puedes simplemente arrastrar y soltar una carpeta completa en el área de transferencia. La app los empaquetará automáticamente en un único archivo comprimido (al vuelo, sin compresión larga) y los enviará en un solo flujo.',
     qrReady: 'Listo · {size}',
     qrPart: 'Parte {current} de {total} · {cameraHint}',
     qrCameraHint: 'Apunta la cámara',
@@ -793,6 +782,8 @@ export const i18n = {
     faqA4: '没有云存储、日志或中间服务器。在浏览器可以直接写入磁盘的情况下，文件不会积累在内存中，实际文件大小限制仅取决于浏览器。',
     faqQ5: '哪些浏览器最适合？',
     faqA5: '大文件最佳选择：通过 HTTPS 的 Chrome、Edge 等 Chromium 浏览器——它们可以通过 File System Access API 直接写入磁盘。Firefox 和 Safari 支持 WebRTC，但对超大文件可能有内存限制。',
+    faqQ6: '可以发送文件夹或多个文件吗？',
+    faqA6: '可以！你可以在文件选择器中一次选择多个文件。在桌面端，也可以直接把整个文件夹拖拽到传输区域。应用会自动将它们打包成单个压缩包（实时打包，无需长时间压缩），并以单一数据流发送。',
     qrReady: '就绪 · {size}',
     qrPart: '第 {current} 部分 / {total} · {cameraHint}',
     qrCameraHint: '对准摄像头',
@@ -909,6 +900,8 @@ export const i18n = {
     faqA4: 'Pas de stockage cloud, pas de journaux, pas de serveurs intermédiaires. Les fichiers ne s\'accumulent pas en mémoire lorsqu\'une écriture directe sur disque est disponible.',
     faqQ5: 'QUELS NAVIGATEURS FONCTIONNENT LE MIEUX ?',
     faqA5: 'Idéal pour les gros fichiers : Chrome, Edge et autres navigateurs Chromium via HTTPS car ils peuvent écrire directement sur le disque avec l\'API File System Access. Firefox et Safari prennent en charge WebRTC mais peuvent avoir des limites de mémoire pour les très gros fichiers.',
+    faqQ6: 'PUIS-JE ENVOYER DES DOSSIERS OU PLUSIEURS FICHIERS ?',
+    faqA6: 'Oui ! Vous pouvez sélectionner plusieurs fichiers à la fois dans le sélecteur de fichiers. Sur ordinateur, vous pouvez aussi simplement glisser-déposer un dossier entier dans la zone de transfert. L\'application les regroupe automatiquement en une seule archive (à la volée, sans compression longue) et les envoie en un seul flux.',
     qrReady: 'Prêt · {size}',
     qrPart: 'Partie {current} sur {total} · {cameraHint}',
     qrCameraHint: 'Pointez votre caméra',
@@ -1025,6 +1018,8 @@ export const i18n = {
     faqA4: '클라우드 저장소나 로그, 중간 서버가 필요하지 않습니다. 브라우저에서 직접 디스크 쓰기를 지원하는 경우 파일이 메모리에 쌓이지 않으며, 실제 파일 크기 제한은 브라우저 성능에만 좌우됩니다.',
     faqQ5: '어떤 브라우저가 가장 적합한가요?',
     faqA5: '대용량 파일 전송에는 HTTPS 환경의 Chrome, Edge 등 Chromium 기반 브라우저가 가장 좋습니다. File System Access API를 통해 디스크에 직접 쓸 수 있기 때문입니다. Firefox와 Safari도 WebRTC를 지원하지만, 디스크 직접 쓰기가 불가능해 메모리에 임시 저장되므로 대용량 파일 전송 시 제한이 있을 수 있습니다.',
+    faqQ6: '폴더나 여러 파일을 보낼 수 있나요?',
+    faqA6: '네! 파일 선택 창에서 여러 파일을 한 번에 선택할 수 있습니다. 데스크톱에서는 폴더 전체를 전송 영역으로 드래그 앤 드롭할 수도 있습니다. 앱이 자동으로 이를 하나의 압축 파일로 묶어(긴 압축 과정 없이 즉시) 단일 스트림으로 전송합니다.',
     qrReady: '준비 완료 · {size}',
     qrPart: '전체 {total} 중 {current}부 · {cameraHint}',
     qrCameraHint: '카메라로 비춰주세요',
@@ -1141,6 +1136,8 @@ export const i18n = {
     faqA4: 'Жодних хмарних сховищ, логів чи проміжних серверів. Файли не накопичуються в пам\'яті там, де доступний прямий запис на диск, а реальне обмеження розміру файлу залежить лише від вашого браузера.',
     faqQ5: 'ЯКІ БРАУЗЕРИ ПРАЦЮЮТЬ НАЙКРАЩЕ?',
     faqA5: 'Найкраще для великих файлів: Chrome, Edge та інші браузери на базі Chromium через HTTPS — вони можуть писати безпосередньо на диск за допомогою File System Access API. Firefox та Safari підтримують WebRTC, але завантажують файли в пам\'ять браузера для великих файлів.',
+    faqQ6: 'ЧИ МОЖУ Я НАДІСЛАТИ ПАПКИ АБО КІЛЬКА ФАЙЛІВ?',
+    faqA6: 'Так! Ви можете вибрати кілька файлів одночасно у діалозі вибору файлів. На комп\'ютері можна також просто перетягнути цілу папку в область передачі. Застосунок автоматично запакує їх в один архів (на льоту, без тривалого стиснення) і надішле єдиним потоком.',
     qrReady: 'Готово · {size}',
     qrPart: 'Частина {current} з {total} · {cameraHint}',
     qrCameraHint: 'Наведіть камеру',

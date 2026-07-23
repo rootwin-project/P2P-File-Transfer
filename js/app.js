@@ -5,7 +5,6 @@ let pack_key = null;
 let unpack_key = null;
 let cryptoLoadPromise = null;
 
-// Ленивая загрузка сторонних <script> по требованию (не блокируют первую отрисовку страницы)
 const scriptLoadPromises = {};
 function loadScript(src) {
     if (scriptLoadPromises[src]) return scriptLoadPromises[src];
@@ -26,9 +25,6 @@ function ensureQRCodeLib() {
 function ensureJsQRLib() {
     return loadScript('https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js');
 }
-// Прогреваем библиотеку заранее в фоне, не дожидаясь клика по кнопке сканирования —
-// на iOS Safari/Chrome (WebKit) getUserMedia теряет привязку к жесту пользователя,
-// если между кликом и вызовом проходит слишком много времени (например, на загрузку скрипта).
 ensureJsQRLib().catch(() => {});
 
 let currentLang = 'en';
@@ -53,7 +49,6 @@ let sendAckCleanup = null;
 let qrCyclerInterval = null;
 let scanDetector = null;
 
-// --- Pause / cancel / stall-watch / keep-tab-open state ---
 let sendTransferChannel = null;
 let sendPaused = false;
 let sendPauseWaiters = [];
@@ -69,7 +64,7 @@ let recvTransferActive = false;
 let recvLastProgressTs = 0;
 let recvStallInterval = null;
 
-const STALL_TIMEOUT_MS = 20000; // no progress for this long -> show a warning
+const STALL_TIMEOUT_MS = 20000;
 
 const FILE_CHUNK_SIZE = 64 * 1024;
 const SEND_BUFFER_LOW_THRESHOLD = 1024 * 1024;
@@ -77,10 +72,8 @@ const SEND_BUFFER_HIGH_WATERMARK = 2 * 1024 * 1024;
 
 const IDB_NAME = 'p2p_transfer';
 const IDB_STORE = 'resume';
-const RESUME_SAVE_INTERVAL = 64; // save progress every N chunks
+const RESUME_SAVE_INTERVAL = 64;
 
-// Shared ICE config — same on PC and mobile so offer/answer keys stay compatible
-// and NAT traversal works in both directions (phone→PC and PC→phone).
 const ICE_CONFIG = {
     iceServers: [
         { urls: 'stun:stun.l.google.com:19302' },
@@ -91,31 +84,19 @@ const ICE_CONFIG = {
     iceCandidatePoolSize: 4,
 };
 
-/**
- * Normalize a pasted/scanned connection key so PC ↔ mobile exchange works even when
- * messengers insert line breaks, zero-width chars, or turn `+` into spaces.
- * Must stay in sync with normalize_b64() in src/lib.rs.
- */
 function normalizeConnectionKey(raw) {
     if (!raw) return '';
     let s = String(raw).replace(/[\u200B-\u200D\uFEFF\u00A0]/g, '');
     const urlSafe = s.includes('-') || s.includes('_');
     if (urlSafe) {
-        // Current format: only A-Za-z0-9_- — drop every whitespace
         return s.replace(/\s+/g, '').trim();
     }
-    // Legacy standard base64: newlines/tabs drop, plain spaces often mean corrupted `+`
     return s
         .replace(/[ \t]/g, '+')
         .replace(/[\r\n\f\v]+/g, '')
         .trim();
 }
 
-/**
- * Drop useless ICE candidates that bloat desktop keys (virtual NICs, link-local)
- * while keeping host + srflx needed for same-WiFi and internet paths.
- * Result: PC keys are similar in size/shape to mobile keys.
- */
 function compactSdp(sdp) {
     if (!sdp || typeof sdp !== 'string') return sdp;
     const lines = sdp.replace(/\r\n/g, '\n').replace(/\r/g, '\n').split('\n');
@@ -127,7 +108,6 @@ function compactSdp(sdp) {
         if (line.startsWith('a=candidate:')) {
             candidates.push(line);
         } else if (line === 'a=end-of-candidates') {
-            // Remember position; insert filtered candidates before this marker
             endOfCandidatesIdx = out.length;
             out.push(line);
         } else {
@@ -139,7 +119,6 @@ function compactSdp(sdp) {
     if (endOfCandidatesIdx >= 0) {
         out.splice(endOfCandidatesIdx, 0, ...picked);
     } else {
-        // No end-of-candidates marker — append before trailing empty lines
         let insertAt = out.length;
         while (insertAt > 0 && out[insertAt - 1] === '') insertAt--;
         out.splice(insertAt, 0, ...picked);
@@ -152,7 +131,6 @@ function selectBestCandidates(candidates) {
 
     const scored = [];
     for (const line of candidates) {
-        // a=candidate:<foundation> <component> <protocol> <priority> <ip> <port> typ <type> ...
         const parts = line.split(/\s+/);
         if (parts.length < 8) continue;
         const protocol = (parts[2] || '').toLowerCase();
@@ -160,12 +138,9 @@ function selectBestCandidates(candidates) {
         const typIdx = parts.indexOf('typ');
         const typ = typIdx >= 0 ? (parts[typIdx + 1] || '') : '';
 
-        // Skip clearly useless addresses that only appear on desktops (VPN/Docker/APIPA)
         if (/^169\.254\./.test(ip)) continue;           // link-local
         if (/^0\.0\.0\.0$/.test(ip)) continue;
-        if (/^127\./.test(ip)) continue;                // loopback
-        if (/^172\.(1[6-9]|2\d|3[0-1])\./.test(ip)) {
-            // private docker/vm range — keep only a couple later via limits
+        if (/^127\./.test(ip)) continue;            if (/^172\.(1[6-9]|2\d|3[0-1])\./.test(ip)) {
         }
 
         let score = 0;
@@ -178,10 +153,8 @@ function selectBestCandidates(candidates) {
         if (protocol === 'udp') score += 15;
         else if (protocol === 'tcp') score += 5;
 
-        // Prefer IPv4 for smaller keys / broader mobile support
         if (ip.includes(':')) score -= 8;
 
-        // Slightly deprioritize typical virtual-bridge ranges
         if (/^172\.(1[6-9]|2\d|3[0-1])\./.test(ip)) score -= 20;
         if (/^192\.168\.56\./.test(ip)) score -= 25; // VirtualBox host-only
         if (/^10\.0\.2\./.test(ip)) score -= 20;      // common VM NAT
@@ -191,7 +164,6 @@ function selectBestCandidates(candidates) {
 
     scored.sort((a, b) => b.score - a.score);
 
-    // Cap per type so desktop multi-NIC machines don't produce huge multi-QR keys
     const limits = { host: 3, srflx: 4, prflx: 2, relay: 2, other: 2 };
     const counts = {};
     const picked = [];
@@ -209,40 +181,30 @@ function selectBestCandidates(candidates) {
     return picked;
 }
 
-/** Build a compact, cross-device connection payload from RTCSessionDescription. */
 function sessionToKeyPayload(desc) {
     const sdp = compactSdp(desc.sdp);
     return JSON.stringify({ sdp, type: desc.type });
 }
 
-/**
- * Decode a connection key (offer or answer) into an RTCSessionDescription-like object.
- * Tolerates whitespace, legacy standard-base64, and raw JSON (very old fallback).
- */
 async function decodeConnectionKey(rawKey) {
     const raw = normalizeConnectionKey(rawKey);
     if (!raw) throw new Error('empty');
 
-    // Try encrypted packed key first (current + legacy formats)
     if (unpack_key) {
         try {
             const unpacked = unpack_key(raw);
             return JSON.parse(unpacked);
         } catch {
-            // fall through
         }
     }
 
-    // Raw JSON SDP (fallback / debug)
     try {
         return JSON.parse(rawKey.trim());
     } catch {
-        // try normalized as JSON too
         return JSON.parse(raw);
     }
 }
 
-/** Wait for ICE gathering with a generous timeout — mobile often needs longer than PC. */
 function waitForIceGathering(pc, timeoutMs = 8000) {
     return new Promise(resolve => {
         if (pc.iceGatheringState === 'complete') return resolve();
@@ -302,7 +264,6 @@ async function idbDelete(key) {
     });
 }
 
-// SHA-256 of first 64 KB of a File — used as a fast identity fingerprint
 async function headHash(file) {
     const slice = await file.slice(0, FILE_CHUNK_SIZE).arrayBuffer();
     const digest = await crypto.subtle.digest('SHA-256', slice);
@@ -313,7 +274,6 @@ function resumeKey(name, size, hash) {
     return `${name}::${size}::${hash}`;
 }
 
-// i18n translations are imported from ./i18n.js
 
 async function startApp() {
     await ensureCrypto();
@@ -329,10 +289,10 @@ async function ensureCrypto() {
                 pack_key = cryptoModule.pack_key;
                 unpack_key = cryptoModule.unpack_key;
                 await initCrypto();
-                console.log('WASM успешно запущен!');
+                console.log('WASM loaded!');
                 return true;
             } catch (e) {
-                console.error('Ошибка загрузки WASM:', e);
+                console.error('WASM load error:', e);
                 return false;
             }
         })();
@@ -346,37 +306,30 @@ function setLang(lang) {
     currentLang = i18n[lang] ? lang : 'en';
     document.documentElement.lang = currentLang;
 
-    // Update all static text nodes tagged with data-i18n
     document.querySelectorAll('[data-i18n]').forEach((el) => {
         const key = el.getAttribute('data-i18n');
         const value = i18n[currentLang]?.[key];
         if (value != null) el.textContent = value;
     });
 
-    // Update globe-button label
     const codeEl = document.getElementById('langCurrentCode');
     if (codeEl && LANG_META[currentLang]) {
         codeEl.textContent = LANG_META[currentLang].code;
     }
 
-    // Sync active state on every option button (dropdown + sheet)
     document.querySelectorAll('.lang-option').forEach((btn) => {
         const active = btn.dataset.lang === currentLang;
         btn.classList.toggle('active', active);
         btn.setAttribute('aria-selected', active);
     });
 
-    // Persist choice
     saveLang(currentLang);
 
-    // Close any open picker
     closeLangMenu();
     closeLangSheet();
 }
 
-// ── Language picker UI ────────────────────────────────────────────────────
 
-/** Populate dropdown & bottom-sheet with one button per language */
 function initLangUI() {
     const dropdown  = document.getElementById('langDropdown');
     const sheetList = document.getElementById('langSheetList');
@@ -400,14 +353,12 @@ function initLangUI() {
         });
     });
 
-    // Sync globe label
     const codeEl = document.getElementById('langCurrentCode');
     if (codeEl && LANG_META[currentLang]) {
         codeEl.textContent = LANG_META[currentLang].code;
     }
 }
 
-/** Toggle dropdown (desktop) or bottom sheet (mobile) */
 function toggleLangMenu() {
     if (window.matchMedia('(max-width: 640px)').matches) {
         openLangSheet();
@@ -441,7 +392,6 @@ function closeLangSheet() {
     document.body.classList.remove('lang-sheet-open');
 }
 
-// Close dropdown when clicking outside of it
 document.addEventListener('click', (e) => {
     const langSwitch = document.getElementById('langSwitch');
     if (langSwitch && !langSwitch.contains(e.target)) {
@@ -449,7 +399,6 @@ document.addEventListener('click', (e) => {
     }
 });
 
-// Close sheet / dropdown on Escape
 document.addEventListener('keydown', (e) => {
     if (e.key === 'Escape') { closeLangMenu(); closeLangSheet(); }
 });
@@ -528,7 +477,6 @@ function setPauseButtonState(btnId, paused) {
     btn.textContent = getTranslation(key);
 }
 
-// --- Sender-side pause / cancel ---
 function waitIfSendPaused() {
     return new Promise(resolve => {
         if (!sendPaused) return resolve();
@@ -561,7 +509,7 @@ function togglePauseSend() {
 function cancelSend() {
     if (!sendTransferChannel && !sendTransferActive) return;
     sendCancelled = true;
-    setSendPausedState(false, false); // wake up any paused loop so it can exit
+    setSendPausedState(false, false);
     if (sendTransferChannel && sendTransferChannel.readyState === 'open') {
         try { sendTransferChannel.send('__cancel__'); } catch (e) { /* ignore */ }
     }
@@ -593,7 +541,6 @@ function stopSendStallWatch() {
     if (el) el.style.display = 'none';
 }
 
-// --- Receiver-side pause / cancel ---
 function togglePauseRecv() {
     if (!recvChannel || recvCancelled) return;
     recvPaused = !recvPaused;
@@ -616,7 +563,7 @@ function cancelRecv() {
     if (writableStream) {
         const ws = writableStream;
         writableStream = null;
-        writeQueue.then(async () => { try { await ws.abort(); } catch (e) { /* ignore */ } });
+        writeQueue.then(async () => { try { await ws.abort(); } catch (e) {} });
     }
     setTimeout(() => resetReceiver(true), 1200);
 }
@@ -701,11 +648,71 @@ function copyText(inputId, btnId) {
     });
 }
 
-function handleDrop(e) {
+async function handleDrop(e) {
     e.preventDefault();
     document.getElementById('dropzone').classList.remove('dragging');
-    const file = e.dataTransfer.files[0];
-    if (file) handleFile(file);
+    
+    if (e.dataTransfer.items && e.dataTransfer.items.length > 0) {
+        let files = [];
+        let hasFolder = false;
+        const items = Array.from(e.dataTransfer.items);
+        
+        for (const item of items) {
+            if (item.kind === 'file') {
+                const entry = item.webkitGetAsEntry ? item.webkitGetAsEntry() : null;
+                if (entry && entry.isDirectory) {
+                    hasFolder = true;
+                    const folderFiles = await traverseFileTree(entry);
+                    files = files.concat(folderFiles);
+                } else {
+                    const file = item.getAsFile();
+                    if (file) files.push(file);
+                }
+            }
+        }
+        
+        if (hasFolder || files.length > 1) {
+            window.handleFolder(files);
+        } else if (files.length === 1) {
+            handleFile(files[0]);
+        }
+    } else {
+        const file = e.dataTransfer.files[0];
+        if (file) handleFile(file);
+    }
+}
+
+function traverseFileTree(item, path = '') {
+    return new Promise((resolve) => {
+        if (item.isFile) {
+            item.file((file) => {
+                Object.defineProperty(file, 'webkitRelativePath', {
+                    value: path + file.name
+                });
+                resolve([file]);
+            });
+        } else if (item.isDirectory) {
+            const dirReader = item.createReader();
+            const files = [];
+            
+            const readEntries = () => {
+                dirReader.readEntries(async (entries) => {
+                    if (entries.length === 0) {
+                        resolve(files);
+                    } else {
+                        for (const entry of entries) {
+                            const subFiles = await traverseFileTree(entry, path + item.name + "/");
+                            files.push(...subFiles);
+                        }
+                        readEntries();
+                    }
+                });
+            };
+            readEntries();
+        } else {
+            resolve([]);
+        }
+    });
 }
 
 function handleFile(file) {
@@ -1855,3 +1862,119 @@ window.closeScanner = closeScanner;
 window.toggleTorch = toggleTorch;
 window.createAnswer = createAnswer;
 window.fmtSize = fmtSize;
+
+window.handleFileSelect = function(files) {
+    if (!files || files.length === 0) return;
+    if (files.length === 1) {
+        window.handleFile(files[0]);
+    } else {
+        window.handleFolder(files);
+    }
+};
+
+window.handleFolder = function(files) {
+    if (!files || files.length === 0) return;
+    // Generate unique name e.g., P2P-Folder-123456.tar
+    const archiveName = 'P2P-Folder-' + Math.floor(Math.random() * 1000000) + '.tar';
+    const tarStreamer = new TarStreamer(files, archiveName);
+    window.handleFile(tarStreamer);
+};
+
+class TarStreamer {
+    constructor(files, archiveName) {
+        this.name = archiveName;
+        this.files = Array.from(files).filter(f => f.webkitRelativePath || f.name);
+        this.segments = [];
+        let offset = 0;
+        
+        for (const file of this.files) {
+            const name = file.webkitRelativePath || file.name;
+            const header = this.createTarHeader(name, file.size);
+            this.segments.push({ type: 'header', data: header, start: offset, end: offset + 512 });
+            offset += 512;
+            
+            this.segments.push({ type: 'file', file: file, start: offset, end: offset + file.size });
+            offset += file.size;
+            
+            const paddingSize = (512 - (file.size % 512)) % 512;
+            if (paddingSize > 0) {
+                this.segments.push({ type: 'padding', length: paddingSize, start: offset, end: offset + paddingSize });
+                offset += paddingSize;
+            }
+        }
+        
+        this.segments.push({ type: 'eof', length: 1024, start: offset, end: offset + 1024 });
+        offset += 1024;
+        
+        this.size = offset;
+    }
+
+    createTarHeader(name, size) {
+        const header = new Uint8Array(512);
+        const encoder = new TextEncoder();
+        
+        let fileName = name;
+        const encodedName = encoder.encode(fileName);
+        if (encodedName.length > 100) {
+            fileName = fileName.substring(fileName.length - 80);
+        }
+        
+        header.set(encoder.encode(fileName.padEnd(100, '\0')), 0);
+        header.set(encoder.encode('0000644\0'), 100);
+        header.set(encoder.encode('0000000\0'), 108);
+        header.set(encoder.encode('0000000\0'), 116);
+        header.set(encoder.encode(size.toString(8).padStart(11, '0') + ' '), 124);
+        const mtime = Math.floor(Date.now() / 1000).toString(8).padStart(11, '0');
+        header.set(encoder.encode(mtime + ' '), 136);
+        header.set(encoder.encode('        '), 148); 
+        header[156] = 48; // '0'
+        header.set(encoder.encode('ustar\0'), 257);
+        header.set(encoder.encode('00'), 263);
+
+        let chksum = 0;
+        for (let i = 0; i < 512; i++) chksum += header[i];
+        const chksumStr = chksum.toString(8).padStart(6, '0') + '\0 ';
+        header.set(encoder.encode(chksumStr), 148);
+
+        return header;
+    }
+
+    slice(start, end) {
+        return new TarSlice(this, start, end);
+    }
+}
+
+class TarSlice {
+    constructor(tar, start, end) {
+        this.tar = tar;
+        this.start = start;
+        this.end = end;
+    }
+    async arrayBuffer() {
+        const size = this.end - this.start;
+        const buffer = new Uint8Array(size);
+        let writeOffset = 0;
+        
+        for (const seg of this.tar.segments) {
+            if (seg.end <= this.start || seg.start >= this.end) continue;
+            
+            const overlapStart = Math.max(this.start, seg.start);
+            const overlapEnd = Math.min(this.end, seg.end);
+            const overlapLength = overlapEnd - overlapStart;
+            
+            if (seg.type === 'header') {
+                buffer.set(seg.data.subarray(overlapStart - seg.start, overlapEnd - seg.start), writeOffset);
+            } else if (seg.type === 'padding' || seg.type === 'eof') {
+                // Buffer is already 0s
+            } else if (seg.type === 'file') {
+                const fileStart = overlapStart - seg.start;
+                const fileEnd = overlapEnd - seg.start;
+                const slice = seg.file.slice(fileStart, fileEnd);
+                const data = new Uint8Array(await slice.arrayBuffer());
+                buffer.set(data, writeOffset);
+            }
+            writeOffset += overlapLength;
+        }
+        return buffer.buffer;
+    }
+}

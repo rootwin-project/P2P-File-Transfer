@@ -4,7 +4,6 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
-<!-- Primary SEO -->
 <title>P2P File Transfer — передача файлов между браузерами без облака</title>
 <meta name="description" content="Отправляйте файлы любого размера напрямую между браузерами через P2P и WebRTC с шифрованием AES-256. Без загрузки в облако, без лимитов и регистрации — быстро, приватно, бесплатно.">
 <meta name="keywords" content="p2p передача файлов, отправить файл без облака, webrtc file transfer, обмен файлами между браузерами, зашифрованная передача файлов, peer to peer файлообменник, отправить большой файл онлайн">
@@ -17,7 +16,6 @@
 <link rel="icon" type="image/png" sizes="16x16" href="images/favicon-16x16.png">
 <link rel="manifest" href="manifest.json">
 
-<!-- Open Graph -->
 <meta property="og:title" content="P2P File Transfer — файлы напрямую между браузерами, без облака">
 <meta property="og:description" content="Передавайте файлы любого размера peer-to-peer через WebRTC с AES-256 шифрованием. Без загрузки на сервер, без лимитов, без регистрации.">
 <meta property="og:image" content="https://rootwin-project.github.io/P2P-File-Transfer/images/og.png">
@@ -28,14 +26,12 @@
 <meta property="og:site_name" content="P2P File Transfer">
 <meta property="og:locale" content="ru_RU">
 
-<!-- Twitter / X -->
 <meta name="twitter:card" content="summary_large_image">
 <meta name="twitter:title" content="P2P File Transfer — файлы напрямую между браузерами, без облака">
 <meta name="twitter:description" content="Передавайте файлы любого размера peer-to-peer через WebRTC с AES-256 шифрованием. Без загрузки на сервер, без лимитов, без регистрации.">
 <meta name="twitter:image" content="https://rootwin-project.github.io/P2P-File-Transfer/images/og.png">
 <meta name="yandex-verification" content="8d73094087b9e80e" />
 
-<!-- Structured data for rich results -->
 <script type="application/ld+json">
 {
   "@context": "https://schema.org",
@@ -58,13 +54,6 @@
 <link rel="stylesheet" href="css/style.css">
 <link rel="preload" as="style" href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" onload="this.onload=null;this.rel='stylesheet'">
 <noscript><link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet"></noscript>
-<!--
-  pako.min.js убран: не используется ни в одном месте app.js.
-  qrcode.min.js и jsQR.min.js больше не грузятся тут синхронно —
-  они подгружаются лениво из js/app.js только в момент реального
-  использования (открытие вкладки QR / открытие сканера камеры),
-  поэтому больше не блокируют первую отрисовку страницы.
--->
 <script async src="https://www.googletagmanager.com/gtag/js?id=G-9VL85XEBE0"></script>
 <script>
   window.dataLayer = window.dataLayer || [];
@@ -75,7 +64,6 @@
 </head>
 <body>
 
-<!-- Liquid Glass: скрытый SVG-фильтр преломления -->
 <svg class="lg-svg-filter" xmlns="http://www.w3.org/2000/svg">
   <defs>
     <filter id="lg-distort" x="-20%" y="-20%" width="140%" height="140%" color-interpolation-filters="linearRGB">
@@ -85,7 +73,6 @@
   </defs>
 </svg>
 
-<!-- Фоновые цветовые блобы для усиления преломления -->
 <div class="lg-blobs" aria-hidden="true">
   <div class="lg-blob lg-blob-1"></div>
   <div class="lg-blob lg-blob-2"></div>
@@ -98,14 +85,12 @@
   </div>
   <span class="navbar-brand" data-i18n="brand">P2P File Transfer</span>
   <span class="navbar-tag"><span class="status-dot" id="connStatusDot"></span><span data-i18n="tag">END-TO-END ENCRYPTED</span></span>
-  <!-- Language switcher: globe button + dropdown (desktop) / bottom sheet (mobile) -->
   <div class="lang-switch" id="langSwitch">
     <button class="lang-globe-btn" id="langGlobeBtn"
             onclick="window.toggleLangMenu()"
             aria-label="Change language"
             aria-expanded="false"
             aria-controls="langDropdown">
-      <!-- Globe icon -->
       <svg class="globe-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" aria-hidden="true">
         <circle cx="8" cy="8" r="6.3"/>
         <ellipse cx="8" cy="8" rx="2.4" ry="6.3"/>
@@ -113,12 +98,10 @@
         <line x1="1.7" y1="10.2" x2="14.3" y2="10.2"/>
       </svg>
       <span class="lang-current-code" id="langCurrentCode">EN</span>
-      <!-- Chevron -->
       <svg class="chevron-icon" viewBox="0 0 10 6" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true">
         <path d="M1 1l4 4 4-4"/>
       </svg>
     </button>
-    <!-- Desktop dropdown (populated by JS) -->
     <div class="lang-dropdown" id="langDropdown" role="listbox" aria-label="Select language"></div>
   </div>
 </nav>
@@ -149,9 +132,9 @@
                ondragleave="this.classList.remove('dragging')"
                ondrop="window.handleDrop(event)">
             <div class="drop-icon">🗂️</div>
-            <p><strong data-i18n="dropText">Нажмите или перетащите файл сюда</strong></p>
-            <p style="margin-top:2px;font-size:11px;" data-i18n="dropHint">Любой тип и размер файла</p>
-            <input type="file" id="fileInput" onchange="window.handleFile(this.files[0])">
+            <p><strong data-i18n="dropText">Файл или перетащите папку</strong></p>
+            <p style="margin-top:2px;font-size:11px;" data-i18n="dropHint">Любой размер. Можно выбрать несколько файлов.</p>
+            <input type="file" id="fileInput" multiple onchange="window.handleFileSelect(this.files)">
           </div>
 
           <div class="file-info" id="fileInfo">
@@ -369,6 +352,11 @@
             <p id="t-faqA5" data-i18n="faqA5">Лучший режим для огромных файлов: Chrome, Edge и другие Chromium-браузеры на HTTPS — они умеют писать файл сразу на диск через File System Access API. Firefox и Safari поддерживают WebRTC, но без прямой записи на диск приложение использует fallback через скачивание, поэтому для очень больших файлов там возможны лимиты памяти.</p>
         </div>
 
+        <div class="faq-section">
+            <h3 id="t-faqQ6" data-i18n="faqQ6">МОЖНО ЛИ ОТПРАВЛЯТЬ ПАПКИ ИЛИ НЕСКОЛЬКО ФАЙЛОВ?</h3>
+            <p id="t-faqA6" data-i18n="faqA6">Да! Просто перетащите папку в область отправки или выделите сразу несколько файлов в диалоге выбора. Приложение автоматически упакует их в один архив (на лету, без долгого сжатия) и отправит получателю одним потоком.</p>
+        </div>
+
         <div class="faq-footer">
             DEVELOPED BY <a href="https://t.me/ROOTWIN_PROJECT" target="_blank" rel="noopener noreferrer">ROOTWIN PROJECT</a>
         </div>
@@ -376,7 +364,6 @@
 </div>
 
 
-<!-- Language Bottom Sheet (mobile, populated by JS) -->
 <div class="lang-sheet-backdrop" id="langSheetBackdrop" onclick="window.closeLangSheet()" aria-hidden="true"></div>
 <div class="lang-sheet" id="langSheet" role="dialog" aria-modal="true" aria-label="Select language">
   <div class="lang-sheet-handle" aria-hidden="true"></div>
