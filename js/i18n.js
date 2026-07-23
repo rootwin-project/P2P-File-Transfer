@@ -1,4 +1,6 @@
 
+
+/** Languages shown in the switcher, in display order */
 export const SUPPORTED_LANGS = ['en', 'ru', 'kk', 'de', 'ja', 'es', 'zh', 'fr', 'ko', 'uk'];
 
 export const LANG_META = {
@@ -14,6 +16,7 @@ export const LANG_META = {
   uk: { label: 'Українська', code: 'UK' },
 };
 
+
 export function detectLang() {
   const saved = localStorage.getItem('p2p_lang');
   if (saved && SUPPORTED_LANGS.includes(saved)) return saved;
@@ -21,6 +24,7 @@ export function detectLang() {
   const nav = (navigator.language || 'en').toLowerCase();
   const primary = nav.split('-')[0];
 
+  // navigator.language can return e.g. "zh-CN" → primary "zh" ✓
   if (SUPPORTED_LANGS.includes(primary)) return primary;
 
   return 'en';
@@ -29,6 +33,7 @@ export function detectLang() {
 export function saveLang(lang) {
   localStorage.setItem('p2p_lang', lang);
 }
+
 
 export const i18n = {
 
@@ -149,6 +154,7 @@ export const i18n = {
     footerDonate: 'Donate',
   },
 
+  // ── Русский ───────────────────────────────────────────────────────────────
   ru: {
     brand: 'P2P File Transfer',
     tag: 'END-TO-END ENCRYPTED',
@@ -266,6 +272,7 @@ export const i18n = {
     footerDonate: 'Донат',
   },
 
+  // ── Қазақша ───────────────────────────────────────────────────────────────
   kk: {
     brand: 'P2P File Transfer',
     tag: 'END-TO-END ENCRYPTED',
@@ -383,6 +390,7 @@ export const i18n = {
     footerDonate: 'Қолдау',
   },
 
+  // ── Deutsch ───────────────────────────────────────────────────────────────
   de: {
     brand: 'P2P File Transfer',
     tag: 'END-TO-END VERSCHLÜSSELT',
